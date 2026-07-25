@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Billing\Http\Controllers\StripeWebhookController;
+use App\Domain\Posts\Models\Post;
 use App\Http\Controllers\SocialAuthController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Cashier\Http\Controllers\PaymentController as CashierPaymentController;
@@ -30,4 +31,20 @@ Route::middleware([
     Route::get('/dashboard', function () {
         return view('dashboard');
     })->name('dashboard');
+
+    Route::get('/posts', function () {
+        return view('posts.index');
+    })->name('posts.index');
+
+    Route::get('/posts/create', function () {
+        return view('posts.create');
+    })->name('posts.create');
+
+    Route::get('/posts/{post}/edit', function (Post $post) {
+        return view('posts.edit', ['post' => $post]);
+    })->name('posts.edit');
+
+    Route::get('/media', function () {
+        return view('media.index');
+    })->name('media.index');
 });

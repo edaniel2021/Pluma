@@ -9,6 +9,8 @@ use Laravel\Jetstream\Events\TeamCreated;
 use Laravel\Jetstream\Events\TeamDeleted;
 use Laravel\Jetstream\Events\TeamUpdated;
 use Laravel\Jetstream\Team as JetstreamTeam;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 
 /**
  * Postiz's Organization, rebuilt on top of Jetstream's Team primitive.
@@ -18,13 +20,18 @@ use Laravel\Jetstream\Team as JetstreamTeam;
  * `current_team_id` on the users table) across several methods, so those
  * stay as-is even though this model and its table are named for our own
  * domain (see database/migrations/*_create_organizations_table.php).
+ *
+ * Also the owner of the shared media library (Postiz's Media model is
+ * org-level, not tied to any single post) via the 'library' collection.
  */
-class Organization extends JetstreamTeam
+class Organization extends JetstreamTeam implements HasMedia
 {
     use Billable;
 
     /** @use HasFactory<OrganizationFactory> */
     use HasFactory;
+
+    use InteractsWithMedia;
 
     /**
      * The attributes that are mass assignable.

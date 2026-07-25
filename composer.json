@@ -16,7 +16,8 @@
         "laravel/tinker": "^3.0",
         "league/flysystem-aws-s3-v3": "^3.35",
         "livewire/livewire": "^3.6.4",
-        "sentry/sentry-laravel": "^4.27"
+        "sentry/sentry-laravel": "^4.27",
+        "spatie/laravel-medialibrary": "^11.23"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
