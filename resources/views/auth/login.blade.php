@@ -44,5 +44,25 @@
                 </x-button>
             </div>
         </form>
+
+        @if (config('services.google.client_id') || config('services.github.client_id'))
+            <div class="mt-4 pt-4 border-t border-gray-200">
+                <div class="flex flex-col gap-2">
+                    @if (config('services.google.client_id'))
+                        <a href="{{ route('social.redirect', 'google') }}"
+                           class="w-full text-center px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50">
+                            {{ __('Continue with Google') }}
+                        </a>
+                    @endif
+
+                    @if (config('services.github.client_id'))
+                        <a href="{{ route('social.redirect', 'github') }}"
+                           class="w-full text-center px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50">
+                            {{ __('Continue with GitHub') }}
+                        </a>
+                    @endif
+                </div>
+            </div>
+        @endif
     </x-authentication-card>
 </x-guest-layout>

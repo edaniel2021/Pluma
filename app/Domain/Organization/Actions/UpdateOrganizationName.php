@@ -1,29 +1,29 @@
 <?php
 
-namespace App\Actions\Jetstream;
+namespace App\Domain\Organization\Actions;
 
-use App\Models\Team;
+use App\Domain\Organization\Models\Organization;
 use App\Models\User;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
 use Laravel\Jetstream\Contracts\UpdatesTeamNames;
 
-class UpdateTeamName implements UpdatesTeamNames
+class UpdateOrganizationName implements UpdatesTeamNames
 {
     /**
-     * Validate and update the given team's name.
+     * Validate and update the given organization's name.
      *
      * @param  array<string, string>  $input
      */
-    public function update(User $user, Team $team, array $input): void
+    public function update(User $user, Organization $organization, array $input): void
     {
-        Gate::forUser($user)->authorize('update', $team);
+        Gate::forUser($user)->authorize('update', $organization);
 
         Validator::make($input, [
             'name' => ['required', 'string', 'max:255'],
         ])->validateWithBag('updateTeamName');
 
-        $team->forceFill([
+        $organization->forceFill([
             'name' => $input['name'],
         ])->save();
     }

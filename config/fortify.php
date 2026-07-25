@@ -162,7 +162,10 @@ return [
     */
 
     'features' => [
-        Features::registration(),
+        // Equivalent to Postiz's REGISTRATION_DISABLED env flag: removing
+        // this feature unregisters Fortify's /register routes entirely
+        // (not just hiding the link), matching the original's behavior.
+        ...(env('REGISTRATION_DISABLED', false) ? [] : [Features::registration()]),
         Features::resetPasswords(),
         // Features::emailVerification(),
         Features::updateProfileInformation(),

@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Actions\Jetstream;
+namespace App\Domain\Auth\Actions;
 
-use App\Models\Team;
+use App\Domain\Organization\Models\Organization;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Laravel\Jetstream\Contracts\DeletesTeams;
@@ -23,7 +23,7 @@ class DeleteUser implements DeletesUsers
     public function delete(User $user): void
     {
         DB::transaction(function () use ($user) {
-            $this->deleteTeams($user);
+            $this->deleteOrganizations($user);
             $user->deleteProfilePhoto();
             $user->tokens->each->delete();
             $user->delete();
@@ -31,14 +31,14 @@ class DeleteUser implements DeletesUsers
     }
 
     /**
-     * Delete the teams and team associations attached to the user.
+     * Delete the organizations and memberships attached to the user.
      */
-    protected function deleteTeams(User $user): void
+    protected function deleteOrganizations(User $user): void
     {
         $user->teams()->detach();
 
-        $user->ownedTeams->each(function (Team $team) {
-            $this->deletesTeams->delete($team);
+        $user->ownedTeams->each(function (Organization $organization) {
+            $this->deletesTeams->delete($organization);
         });
     }
 }

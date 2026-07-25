@@ -4,7 +4,8 @@
     @method('PUT')
     @csrf
 
-    <!-- Hidden Team ID -->
+    <!-- Hidden Organization ID: field/route names are Jetstream's own
+         current-team.update controller contract, not ours to rename. -->
     <input type="hidden" name="team_id" value="{{ $team->id }}">
 
     <x-dynamic-component :component="$component" href="#" x-on:click.prevent="$root.submit();">

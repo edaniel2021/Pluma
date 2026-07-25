@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Models\Team;
+use App\Domain\Organization\Models\Organization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Jetstream\Http\Livewire\DeleteTeamForm;
@@ -17,7 +17,7 @@ class DeleteTeamTest extends TestCase
     {
         $this->actingAs($user = User::factory()->withPersonalTeam()->create());
 
-        $user->ownedTeams()->save($team = Team::factory()->make([
+        $user->ownedTeams()->save($team = Organization::factory()->make([
             'personal_team' => false,
         ]));
 
