@@ -47,4 +47,18 @@ return [
         'redirect' => env('GITHUB_REDIRECT_URI', env('APP_URL').'/auth/github/callback'),
     ],
 
+    // Publishing-target integrations (App\Domain\Integrations), distinct
+    // from the app-login providers above.
+    'linkedin-openid' => [
+        'client_id' => env('LINKEDIN_CLIENT_ID'),
+        'client_secret' => env('LINKEDIN_CLIENT_SECRET'),
+        'redirect' => env('LINKEDIN_REDIRECT_URI', env('APP_URL').'/integrations/linkedin/callback'),
+    ],
+
+    'x' => [
+        'client_id' => env('X_CLIENT_ID'),
+        'client_secret' => env('X_CLIENT_SECRET'),
+        'redirect' => env('X_REDIRECT_URI', env('APP_URL').'/integrations/x/callback'),
+    ],
+
 ];

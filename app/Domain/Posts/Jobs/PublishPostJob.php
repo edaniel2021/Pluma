@@ -2,11 +2,12 @@
 
 namespace App\Domain\Posts\Jobs;
 
+use App\Domain\Integrations\Support\BadBodyException;
+use App\Domain\Integrations\Support\RefreshTokenException;
+use App\Domain\Integrations\Support\SocialProviderManager;
 use App\Domain\Organization\Support\CurrentOrganization;
 use App\Domain\Posts\Enums\PostState;
 use App\Domain\Posts\Models\Post;
-use App\Domain\Posts\Support\FakeSocialPublisher;
-use App\Domain\Posts\Support\PublishingFailedException;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -21,10 +22,10 @@ use Throwable;
  * execution time - in-flight jobs then survive code deploys/queue restarts
  * rather than carrying a stale serialized snapshot.
  *
- * Publishes via FakeSocialPublisher for now; once the integrations phase
- * exists, `handle()` will resolve a real per-Integration provider instead,
- * but the retry/backoff/locking/error-recording shape here shouldn't need
- * to change.
+ * Resolves the provider via SocialProviderManager per the post's Integration
+ * (see App\Domain\Integrations) - this shape (retry/backoff/locking/error-
+ * recording) didn't need to change from Phase 3's version against
+ * FakeSocialPublisher; only what's inside the try block did.
  */
 class PublishPostJob implements ShouldQueue
 {
@@ -59,27 +60,35 @@ class PublishPostJob implements ShouldQueue
         return [(new WithoutOverlapping((string) $this->postId))->releaseAfter(120)->expireAfter(180)];
     }
 
-    public function handle(FakeSocialPublisher $publisher): void
+    public function handle(SocialProviderManager $providers): void
     {
-        $post = Post::withoutGlobalScope('organization')->find($this->postId);
+        $post = Post::withoutGlobalScope('organization')->with('integration')->find($this->postId);
 
-        // Already handled by a previous attempt, deleted, or no longer
-        // actually queued (e.g. the user edited it back to Draft) - a
-        // no-op, not a failure.
-        if (! $post || $post->state !== PostState::Queue) {
+        // Already handled by a previous attempt, deleted, no longer actually
+        // queued (e.g. the user edited it back to Draft), or never had a
+        // publishing target attached - a no-op, not a failure.
+        if (! $post || $post->state !== PostState::Queue || ! $post->integration) {
             return;
         }
 
         CurrentOrganization::set($post->organization);
 
         try {
-            $publisher->publish($post);
+            $providers->driver($post->integration->provider)->post($post->integration, $post);
 
             $post->update([
                 'state' => PostState::Published,
                 'published_at' => now(),
             ]);
-        } catch (PublishingFailedException $e) {
+        } catch (RefreshTokenException $e) {
+            $post->errors()->create([
+                'type' => 'token_expired',
+                'message' => $e->getMessage(),
+                'retry_count' => $this->attempts(),
+            ]);
+
+            throw $e;
+        } catch (BadBodyException $e) {
             $post->errors()->create([
                 'type' => 'platform_error',
                 'message' => $e->getMessage(),
@@ -108,7 +117,7 @@ class PublishPostJob implements ShouldQueue
         $post->update(['state' => PostState::Error]);
 
         $post->errors()->create([
-            'type' => 'platform_error',
+            'type' => $exception instanceof RefreshTokenException ? 'token_expired' : 'platform_error',
             'message' => 'Publishing failed permanently after '.$this->tries.' attempts: '
                 .($exception?->getMessage() ?? 'unknown error'),
             'retry_count' => $this->tries,

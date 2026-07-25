@@ -2,11 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Domain\Integrations\Models\Integration;
+use App\Domain\Integrations\Support\BadBodyException;
+use App\Domain\Integrations\Support\SocialProviderManager;
 use App\Domain\Posts\Enums\PostState;
 use App\Domain\Posts\Jobs\PublishPostJob;
 use App\Domain\Posts\Models\Post;
-use App\Domain\Posts\Support\FakeSocialPublisher;
-use App\Domain\Posts\Support\PublishingFailedException;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -20,13 +21,16 @@ class PublishPostJobTest extends TestCase
         $user = User::factory()->withPersonalTeam()->create();
         $this->actingAs($user);
 
+        $integration = Integration::factory()->create();
+
         $post = Post::factory()->create([
+            'integration_id' => $integration->id,
             'content' => 'A perfectly normal post.',
             'state' => PostState::Queue,
             'scheduled_at' => now()->subMinute(),
         ]);
 
-        (new PublishPostJob($post->id))->handle(new FakeSocialPublisher);
+        (new PublishPostJob($post->id))->handle(app(SocialProviderManager::class));
 
         $post->refresh();
 
@@ -40,16 +44,19 @@ class PublishPostJobTest extends TestCase
         $user = User::factory()->withPersonalTeam()->create();
         $this->actingAs($user);
 
+        $integration = Integration::factory()->create();
+
         $post = Post::factory()->create([
+            'integration_id' => $integration->id,
             'content' => 'This one is rigged to fail. [FAIL]',
             'state' => PostState::Queue,
             'scheduled_at' => now()->subMinute(),
         ]);
 
-        $this->expectException(PublishingFailedException::class);
+        $this->expectException(BadBodyException::class);
 
         try {
-            (new PublishPostJob($post->id))->handle(new FakeSocialPublisher);
+            (new PublishPostJob($post->id))->handle(app(SocialProviderManager::class));
         } finally {
             $post->refresh();
 
@@ -66,14 +73,17 @@ class PublishPostJobTest extends TestCase
         $user = User::factory()->withPersonalTeam()->create();
         $this->actingAs($user);
 
+        $integration = Integration::factory()->create();
+
         $post = Post::factory()->create([
+            'integration_id' => $integration->id,
             'content' => 'Doomed. [FAIL]',
             'state' => PostState::Queue,
             'scheduled_at' => now()->subMinute(),
         ]);
 
         $job = new PublishPostJob($post->id);
-        $job->failed(new PublishingFailedException('Simulated final failure.'));
+        $job->failed(new BadBodyException('Simulated final failure.'));
 
         $post->refresh();
 
@@ -86,16 +96,37 @@ class PublishPostJobTest extends TestCase
         $user = User::factory()->withPersonalTeam()->create();
         $this->actingAs($user);
 
+        $integration = Integration::factory()->create();
+
         $post = Post::factory()->create([
+            'integration_id' => $integration->id,
             'state' => PostState::Draft,
             'scheduled_at' => now()->subMinute(),
         ]);
 
-        (new PublishPostJob($post->id))->handle(new FakeSocialPublisher);
+        (new PublishPostJob($post->id))->handle(app(SocialProviderManager::class));
 
         $post->refresh();
 
         $this->assertSame(PostState::Draft, $post->state);
+        $this->assertNull($post->published_at);
+    }
+
+    public function test_it_is_a_no_op_if_the_post_has_no_integration(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $this->actingAs($user);
+
+        $post = Post::factory()->create([
+            'state' => PostState::Queue,
+            'scheduled_at' => now()->subMinute(),
+        ]);
+
+        (new PublishPostJob($post->id))->handle(app(SocialProviderManager::class));
+
+        $post->refresh();
+
+        $this->assertSame(PostState::Queue, $post->state);
         $this->assertNull($post->published_at);
     }
 }

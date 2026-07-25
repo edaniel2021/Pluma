@@ -47,9 +47,9 @@ No CI/lint command is configured yet (`laravel/pint` is installed as a dev depen
 
 ### Domain-oriented structure, not the default Laravel layout
 
-Business logic lives under `app/Domain/{Organization,Auth,Billing,Posts}/{Models,Actions,Policies,Enums,Concerns,Support}`, not `app/Models`/`app/Http/Controllers`. Controllers and Livewire components stay thin and call single-purpose Action classes (e.g. `App\Domain\Posts\Actions\CreatePost`). `app/Models/User.php` and Fortify's actions under `app/Actions/Fortify` are the only things left in Laravel's default locations, since Jetstream/Fortify scaffolding expects them there.
+Business logic lives under `app/Domain/{Organization,Auth,Billing,Posts,Integrations}/{Models,Actions,Policies,Enums,Concerns,Support,Contracts,Providers}`, not `app/Models`/`app/Http/Controllers`. Controllers and Livewire components stay thin and call single-purpose Action classes (e.g. `App\Domain\Posts\Actions\CreatePost`). `app/Models/User.php` and Fortify's actions under `app/Actions/Fortify` are the only things left in Laravel's default locations, since Jetstream/Fortify scaffolding expects them there.
 
-When adding a new domain (e.g. Integrations in a later phase), follow this same folder shape rather than flattening things into `app/Models`.
+When adding a new domain, follow this same folder shape rather than flattening things into `app/Models`.
 
 ### Organization is Jetstream's Team, renamed and extended
 
@@ -65,7 +65,7 @@ Roles are custom: `superadmin`/`admin`/`user` (defined in `JetstreamServiceProvi
 
 `App\Domain\Organization\Concerns\BelongsToOrganization` is the safety net — any model that uses it gets a global scope filtering every query to the active organization, and auto-fills `organization_id` on create. "Active organization" is resolved by `App\Domain\Organization\Support\CurrentOrganization`, which defaults to `Auth::user()->currentTeam` for normal web requests.
 
-The scope is a no-op when no organization is resolvable (rather than hiding all rows) — this is intentional so console commands, tests, and future cross-tenant admin tooling can still query freely by being explicit. Background jobs (starting Phase 3, which has no authenticated user) must call `CurrentOrganization::set($organization)` before touching any scoped model and `clear()` afterward.
+The scope is a no-op when no organization is resolvable (rather than hiding all rows) — this is intentional so console commands, tests, and future cross-tenant admin tooling can still query freely by being explicit. Background jobs have no authenticated user, so they must call `CurrentOrganization::set($organization)` before touching any scoped model and `clear()` afterward — see `PublishPostJob` for the pattern.
 
 `Post` and `Tag` use this trait; `PostComment` and `PostError` deliberately don't (they inherit tenant isolation transitively through their parent `Post`).
 
@@ -73,9 +73,31 @@ The scope is a no-op when no organization is resolvable (rather than hiding all 
 
 `Organization` implements `HasMedia`/`InteractsWithMedia` (spatie/laravel-medialibrary) with a `'library'` collection — this matches Postiz's model where uploaded assets are a shared org-wide library, not owned by individual posts. `Post` also implements `InteractsWithMedia` separately for per-post attachments once the composer UI exists. There's no conversions/thumbnails pipeline configured yet — the media UI shows original files directly.
 
-### Post has no publishing pipeline yet
+### Publishing pipeline: Laravel queue + scheduler replaces Temporal
 
-`Post`'s `state` enum (`App\Domain\Posts\Enums\PostState`: Draft/Queue/Published/Error) and `scheduled_at`/`published_at` columns exist, but nothing acts on them yet — a post just sits in whatever state it's given. The queue/scheduling engine (a `posts:dispatch-due` command + `PublishPostJob`, replacing Postiz's Temporal workflows with Laravel's queue + scheduler + Horizon) is the next phase per the plan doc. `PostError.integration_id` has no FK constraint yet because the `Integration` model (social-platform connections) doesn't exist until the integrations phase.
+`posts:dispatch-due` (`app/Console/Commands/DispatchDuePosts.php`, scheduled every minute in `routes/console.php`) queries every organization for posts in the `Queue` state with a due `scheduled_at` **and a non-null `integration_id`**, bypassing the tenancy scope (`Post::withoutGlobalScope('organization')`) since it runs with no authenticated user. This single poller covers both Postiz's "autopost" and "missing post recovery" Temporal workflows — a post that was somehow skipped just gets picked up on the next run, no separate recovery logic needed.
+
+`PublishPostJob` (`app/Domain/Posts/Jobs`) takes only a post ID, not the model — it re-fetches fresh state at execution time so in-flight jobs survive deploys/queue restarts rather than carrying a stale serialized snapshot. 5 retries, backoff `30,120,600,1800,3600` seconds, `WithoutOverlapping` keyed by post ID to guard against the poller double-dispatching for a still-running job. Each failed attempt records a typed `PostError` (`token_expired` for `RefreshTokenException`, `platform_error` for `BadBodyException`); `failed()` (retries exhausted) additionally marks the post `Error`.
+
+It resolves the actual provider via `SocialProviderManager::driver($post->integration->provider)` — see the Integrations section below. A post with no `integration_id` is a Phase 2-style plain draft, not eligible for dispatch at all.
+
+### Integrations layer (`app/Domain/Integrations`)
+
+One class per platform implementing `Contracts\SocialProviderContract` (`key()`, `label()`, `socialiteDriver()`, `scopes()`, `connect()`, `refreshToken()`, `checkValidity()`, `post()`), registered in `config/social-providers.php` — adding platform #4 is "one class + one config line" via `SocialProviderManager`. `AbstractSocialProvider` implements the shared `connect()` (find-or-create the `Integration` row from a Socialite user) and a `request()`/`assertSuccessful()` helper that maps failed HTTP responses to `RefreshTokenException` (401) or `BadBodyException` (anything else failed).
+
+Real providers lean on **Socialite's own OAuth dance** rather than reimplementing it — `IntegrationConnectController` (`app/Http/Controllers`) is a generic `redirect()`/`callback()` pair driving whichever provider's `socialiteDriver()`/`scopes()` say to use. `LinkedInProvider` uses the `linkedin-openid` driver plus the `w_member_social` scope (personal-profile posting only — org-page posting needs LinkedIn's separate Marketing Developer Platform partner approval) and posts via LinkedIn's `/rest/posts` API. `XProvider` uses Socialite's built-in `x` driver (OAuth2 + PKCE, already includes refresh-token support) plus `tweet.write offline.access` scopes, posting via `/2/tweets`. Both were verified for real: connecting redirects all the way to the platform's live OAuth authorize endpoint with correctly merged scopes — only real `client_id`/`client_secret` env vars are missing until you register developer apps on each platform.
+
+`FakeProvider` (registry key `fake`) is Phase 3's `FakeSocialPublisher` generalized into the same registry — useful for local dev/tests without real API keys, deliberately excluded from the connect UI and from `IntegrationConnectController`'s allow-list (only real providers are connectable).
+
+`Integration` (org-scoped via `BelongsToOrganization`) is distinct from `App\Domain\Auth\Models\SocialAccount` (Google/GitHub *login* linkage) — don't conflate the two. Access/refresh tokens are stored via Laravel's `encrypted` cast, not custom encryption code.
+
+### Launches: the calendar + composer (`app/Livewire/Launches`)
+
+The first fully real user-facing feature. `Calendar` renders every post that has both an `integration_id` and a `scheduled_at` as a FullCalendar event (`resources/js/app.js`'s `launchesCalendar` Alpine component, `wire:ignore`-wrapped so Livewire's morphing never touches FullCalendar's self-managed DOM). Dragging an event calls `$wire.reschedule()`, which reverts the drag client-side if the post isn't still Draft/Queue server-side. Clicking a date opens the composer prefilled via a `#[Url]`-bound `date` query param; clicking an event opens it in edit mode.
+
+`Composer` embeds TipTap (`postComposer` Alpine component, also `wire:ignore`-wrapped) syncing plain text to a Livewire property via `onUpdate` → `$wire.set('content', ...)` — content is plain text, not HTML, since X/LinkedIn both post plain text. Selecting an integration surfaces that platform's character limit (a plain lookup table, `Composer::CHARACTER_LIMITS`) rather than per-editor config, since there's no rich-content mapping to a specific platform's formatting to worry about yet.
+
+This composer (integration-aware, required target) coexists with Phase 2's plain `/posts` CRUD (no integration, freeform state) rather than replacing it — the latter is still there for drafts not yet tied to a publishing target.
 
 ### Auth
 

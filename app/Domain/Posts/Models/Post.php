@@ -2,6 +2,7 @@
 
 namespace App\Domain\Posts\Models;
 
+use App\Domain\Integrations\Models\Integration;
 use App\Domain\Organization\Concerns\BelongsToOrganization;
 use App\Domain\Posts\Enums\PostState;
 use App\Models\User;
@@ -27,6 +28,7 @@ class Post extends Model implements HasMedia
      */
     protected $fillable = [
         'user_id',
+        'integration_id',
         'content',
         'state',
         'scheduled_at',
@@ -58,6 +60,11 @@ class Post extends Model implements HasMedia
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function integration(): BelongsTo
+    {
+        return $this->belongsTo(Integration::class);
     }
 
     public function tags(): BelongsToMany

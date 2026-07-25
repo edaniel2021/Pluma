@@ -27,6 +27,7 @@ class DispatchDuePosts extends Command
         $duePosts = Post::withoutGlobalScope('organization')
             ->where('state', PostState::Queue)
             ->where('scheduled_at', '<=', now())
+            ->whereNotNull('integration_id')
             ->get();
 
         foreach ($duePosts as $post) {

@@ -2,6 +2,7 @@
 
 use App\Domain\Billing\Http\Controllers\StripeWebhookController;
 use App\Domain\Posts\Models\Post;
+use App\Http\Controllers\IntegrationConnectController;
 use App\Http\Controllers\SocialAuthController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Cashier\Http\Controllers\PaymentController as CashierPaymentController;
@@ -47,4 +48,25 @@ Route::middleware([
     Route::get('/media', function () {
         return view('media.index');
     })->name('media.index');
+
+    Route::get('/integrations', function () {
+        return view('integrations.index');
+    })->name('integrations.index');
+
+    Route::get('/integrations/{provider}/redirect', [IntegrationConnectController::class, 'redirect'])
+        ->name('integrations.redirect');
+    Route::get('/integrations/{provider}/callback', [IntegrationConnectController::class, 'callback'])
+        ->name('integrations.callback');
+
+    Route::get('/launches', function () {
+        return view('launches.index');
+    })->name('launches.index');
+
+    Route::get('/launches/compose', function () {
+        return view('launches.compose');
+    })->name('launches.compose');
+
+    Route::get('/launches/{post}/compose', function (Post $post) {
+        return view('launches.compose', ['post' => $post]);
+    })->name('launches.compose.edit');
 });

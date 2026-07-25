@@ -2,8 +2,10 @@
 
 namespace App\Domain\Organization\Models;
 
+use App\Domain\Integrations\Models\Integration;
 use Database\Factories\OrganizationFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Laravel\Cashier\Billable;
 use Laravel\Jetstream\Events\TeamCreated;
 use Laravel\Jetstream\Events\TeamDeleted;
@@ -77,5 +79,10 @@ class Organization extends JetstreamTeam implements HasMedia
     protected static function newFactory(): OrganizationFactory
     {
         return OrganizationFactory::new();
+    }
+
+    public function integrations(): HasMany
+    {
+        return $this->hasMany(Integration::class);
     }
 }

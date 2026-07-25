@@ -15,11 +15,17 @@
                     <x-nav-link href="{{ route('dashboard') }}" :active="request()->routeIs('dashboard')">
                         {{ __('Dashboard') }}
                     </x-nav-link>
+                    <x-nav-link href="{{ route('launches.index') }}" :active="request()->routeIs('launches.*')">
+                        {{ __('Launches') }}
+                    </x-nav-link>
                     <x-nav-link href="{{ route('posts.index') }}" :active="request()->routeIs('posts.*')">
                         {{ __('Posts') }}
                     </x-nav-link>
                     <x-nav-link href="{{ route('media.index') }}" :active="request()->routeIs('media.*')">
                         {{ __('Media') }}
+                    </x-nav-link>
+                    <x-nav-link href="{{ route('integrations.index') }}" :active="request()->routeIs('integrations.*')">
+                        {{ __('Integrations') }}
                     </x-nav-link>
                 </div>
             </div>
@@ -148,11 +154,17 @@
             <x-responsive-nav-link href="{{ route('dashboard') }}" :active="request()->routeIs('dashboard')">
                 {{ __('Dashboard') }}
             </x-responsive-nav-link>
+            <x-responsive-nav-link href="{{ route('launches.index') }}" :active="request()->routeIs('launches.*')">
+                {{ __('Launches') }}
+            </x-responsive-nav-link>
             <x-responsive-nav-link href="{{ route('posts.index') }}" :active="request()->routeIs('posts.*')">
                 {{ __('Posts') }}
             </x-responsive-nav-link>
             <x-responsive-nav-link href="{{ route('media.index') }}" :active="request()->routeIs('media.*')">
                 {{ __('Media') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link href="{{ route('integrations.index') }}" :active="request()->routeIs('integrations.*')">
+                {{ __('Integrations') }}
             </x-responsive-nav-link>
         </div>
 
