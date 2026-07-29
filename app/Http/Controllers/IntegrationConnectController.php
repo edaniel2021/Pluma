@@ -6,6 +6,7 @@ use App\Domain\Integrations\Contracts\SocialProviderContract;
 use App\Domain\Integrations\Support\SocialProviderManager;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Collection;
 use Laravel\Socialite\Facades\Socialite;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -28,6 +29,7 @@ class IntegrationConnectController extends Controller
 
         return Socialite::driver($driver->socialiteDriver())
             ->scopes($driver->scopes())
+            ->with($driver->redirectParameters())
             ->redirect();
     }
 
@@ -37,10 +39,15 @@ class IntegrationConnectController extends Controller
 
         $socialiteUser = Socialite::driver($driver->socialiteDriver())->user();
 
-        $driver->connect($socialiteUser);
+        $connected = $driver->connect($socialiteUser);
 
-        return redirect()->route('integrations.index')
-            ->banner("Connected {$driver->label()}.");
+        $count = $connected instanceof Collection ? $connected->count() : 1;
+
+        $message = $count === 1
+            ? "Connected {$driver->label()}."
+            : "Connected {$count} {$driver->label()} accounts.";
+
+        return redirect()->route('integrations.index')->banner($message);
     }
 
     protected function resolveConnectableProvider(string $provider): SocialProviderContract

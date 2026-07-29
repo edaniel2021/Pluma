@@ -2,6 +2,7 @@
 
 use App\Domain\Billing\Http\Controllers\StripeWebhookController;
 use App\Domain\Posts\Models\Post;
+use App\Domain\WhatsApp\Models\WhatsAppAccount;
 use App\Http\Controllers\IntegrationConnectController;
 use App\Http\Controllers\SocialAuthController;
 use Illuminate\Support\Facades\Route;
@@ -69,4 +70,16 @@ Route::middleware([
     Route::get('/launches/{post}/compose', function (Post $post) {
         return view('launches.compose', ['post' => $post]);
     })->name('launches.compose.edit');
+
+    Route::get('/whatsapp', function () {
+        return view('whatsapp.index');
+    })->name('whatsapp.index');
+
+    Route::get('/whatsapp/{account}/contacts', function (WhatsAppAccount $account) {
+        return view('whatsapp.contacts', ['account' => $account]);
+    })->name('whatsapp.contacts');
+
+    Route::get('/whatsapp/{account}/broadcasts', function (WhatsAppAccount $account) {
+        return view('whatsapp.broadcasts', ['account' => $account]);
+    })->name('whatsapp.broadcasts');
 });

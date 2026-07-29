@@ -11,9 +11,12 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class Composer extends Component
 {
+    use WithFileUploads;
+
     /**
      * Per-platform character limits - the plan's "TipTap character-limit
      * rules" carried over as a plain lookup rather than editor config,
@@ -35,6 +38,13 @@ class Composer extends Component
     public string $state = 'queue';
 
     public ?string $scheduled_at = null;
+
+    /**
+     * A newly selected file pending upload - separate from the post's
+     * already-attached media (see `existingMedia` in the view), since
+     * a post's single `default` media slot is only replaced on save().
+     */
+    public $upload = null;
 
     #[Url]
     public ?string $date = null;
@@ -71,20 +81,32 @@ class Composer extends Component
             ],
             'state' => ['required', Rule::enum(PostState::class)],
             'scheduled_at' => ['nullable', 'date'],
+            'upload' => ['nullable', 'file', 'mimes:jpg,jpeg,png,gif,mp4,mov', 'max:102400'],
         ];
     }
 
     public function save(CreatePost $createPost, UpdatePost $updatePost): void
     {
         $validated = $this->validate();
+        $upload = $validated['upload'] ?? null;
+        unset($validated['upload']);
 
-        if ($this->post) {
-            $updatePost->execute($this->post, $validated);
-        } else {
-            $createPost->execute($validated);
+        $post = $this->post
+            ? $updatePost->execute($this->post, $validated)
+            : $createPost->execute($validated);
+
+        if ($upload) {
+            $post->addMedia($upload->getRealPath())
+                ->usingFileName($upload->getClientOriginalName())
+                ->toMediaCollection('default');
         }
 
         $this->redirectRoute('launches.index');
+    }
+
+    public function removeMedia(): void
+    {
+        $this->post?->clearMediaCollection('default');
     }
 
     public function delete(DeletePost $deletePost): void

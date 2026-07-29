@@ -3,6 +3,7 @@
 namespace App\Domain\Organization\Models;
 
 use App\Domain\Integrations\Models\Integration;
+use App\Domain\WhatsApp\Models\WhatsAppAccount;
 use Database\Factories\OrganizationFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -84,5 +85,10 @@ class Organization extends JetstreamTeam implements HasMedia
     public function integrations(): HasMany
     {
         return $this->hasMany(Integration::class);
+    }
+
+    public function whatsAppAccounts(): HasMany
+    {
+        return $this->hasMany(WhatsAppAccount::class);
     }
 }

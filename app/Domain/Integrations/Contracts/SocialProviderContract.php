@@ -4,6 +4,7 @@ namespace App\Domain\Integrations\Contracts;
 
 use App\Domain\Integrations\Models\Integration;
 use App\Domain\Posts\Models\Post;
+use Illuminate\Support\Collection;
 use Laravel\Socialite\Two\User as SocialiteUser;
 
 /**
@@ -41,10 +42,25 @@ interface SocialProviderContract
     public function scopes(): array;
 
     /**
-     * Create or update the Integration record for a freshly connected
-     * account (called from the OAuth callback).
+     * Extra provider-specific query params for the redirect step - e.g.
+     * Google's access_type/prompt to force a refresh_token to be issued.
+     * Empty for most providers.
+     *
+     * @return array<string, string>
      */
-    public function connect(SocialiteUser $socialiteUser): Integration;
+    public function redirectParameters(): array;
+
+    /**
+     * Create or update the Integration record(s) for a freshly connected
+     * account (called from the OAuth callback). Most providers connect
+     * exactly one account per OAuth round-trip; Facebook/Instagram can
+     * discover several (every Page the user manages, or every Page's
+     * linked IG Business Account) from a single login, so they return a
+     * Collection instead.
+     *
+     * @return Integration|Collection<int, Integration>
+     */
+    public function connect(SocialiteUser $socialiteUser): Integration|Collection;
 
     /**
      * Exchange the refresh token for a new access token and persist it.

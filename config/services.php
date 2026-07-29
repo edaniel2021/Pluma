@@ -61,4 +61,28 @@ return [
         'redirect' => env('X_REDIRECT_URI', env('APP_URL').'/integrations/x/callback'),
     ],
 
+    // Facebook Pages and Instagram (via its linked Page) both go through
+    // the same Meta app, so INSTAGRAM_CLIENT_ID/SECRET default to the
+    // Facebook ones - only set them separately if using a different app.
+    'facebook' => [
+        'client_id' => env('FACEBOOK_CLIENT_ID'),
+        'client_secret' => env('FACEBOOK_CLIENT_SECRET'),
+        'redirect' => env('FACEBOOK_REDIRECT_URI', env('APP_URL').'/integrations/facebook/callback'),
+    ],
+
+    'instagram-facebook' => [
+        'client_id' => env('INSTAGRAM_CLIENT_ID', env('FACEBOOK_CLIENT_ID')),
+        'client_secret' => env('INSTAGRAM_CLIENT_SECRET', env('FACEBOOK_CLIENT_SECRET')),
+        'redirect' => env('INSTAGRAM_REDIRECT_URI', env('APP_URL').'/integrations/instagram/callback'),
+    ],
+
+    // Defaults to the same Google OAuth app as the 'google' *login* driver
+    // above - only set YOUTUBE_CLIENT_ID/SECRET separately if you want a
+    // distinct Google Cloud project for the YouTube Data API.
+    'youtube' => [
+        'client_id' => env('YOUTUBE_CLIENT_ID', env('GOOGLE_CLIENT_ID')),
+        'client_secret' => env('YOUTUBE_CLIENT_SECRET', env('GOOGLE_CLIENT_SECRET')),
+        'redirect' => env('YOUTUBE_REDIRECT_URI', env('APP_URL').'/integrations/youtube/callback'),
+    ],
+
 ];

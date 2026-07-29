@@ -6,12 +6,13 @@ use App\Domain\Integrations\Contracts\SocialProviderContract;
 use App\Domain\Integrations\Models\Integration;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Laravel\Socialite\Two\User as SocialiteUser;
 
 abstract class AbstractSocialProvider implements SocialProviderContract
 {
-    public function connect(SocialiteUser $socialiteUser): Integration
+    public function connect(SocialiteUser $socialiteUser): Integration|Collection
     {
         return Integration::updateOrCreate(
             [
@@ -32,6 +33,11 @@ abstract class AbstractSocialProvider implements SocialProviderContract
     public function checkValidity(Integration $integration): bool
     {
         return ! $integration->isDisabled() && ! $integration->needsTokenRefresh();
+    }
+
+    public function redirectParameters(): array
+    {
+        return [];
     }
 
     /**

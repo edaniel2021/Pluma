@@ -9,12 +9,22 @@ use App\Livewire\Launches\Calendar;
 use App\Livewire\Launches\Composer;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Tests\TestCase;
 
 class LaunchesTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // MediaLibrary writes to the real disk otherwise, polluting local dev storage.
+        Storage::fake(config('media-library.disk_name'));
+    }
 
     public function test_a_launch_can_be_composed_against_a_connected_integration(): void
     {
@@ -140,5 +150,38 @@ class LaunchesTest extends TestCase
             ->call('reschedule', $post->id, now()->addDays(3)->toIso8601String());
 
         $this->assertTrue($originalScheduledAt->equalTo($post->fresh()->scheduled_at));
+    }
+
+    public function test_an_image_can_be_attached_when_composing_a_launch(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $this->actingAs($user);
+        $integration = Integration::factory()->create();
+
+        Livewire::test(Composer::class)
+            ->set('integration_id', $integration->id)
+            ->set('content', 'A launch with a picture.')
+            ->set('upload', UploadedFile::fake()->image('launch.jpg'))
+            ->call('save');
+
+        $post = Post::first();
+
+        $this->assertNotNull($post);
+        $this->assertSame(1, $post->getMedia('default')->count());
+        $this->assertSame('launch.jpg', $post->getFirstMedia('default')->file_name);
+    }
+
+    public function test_removing_the_attachment_clears_it(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $this->actingAs($user);
+        $integration = Integration::factory()->create();
+        $post = Post::factory()->create(['integration_id' => $integration->id]);
+        $post->addMedia(UploadedFile::fake()->image('launch.jpg'))->toMediaCollection('default');
+
+        Livewire::test(Composer::class, ['post' => $post])
+            ->call('removeMedia');
+
+        $this->assertSame(0, $post->fresh()->getMedia('default')->count());
     }
 }

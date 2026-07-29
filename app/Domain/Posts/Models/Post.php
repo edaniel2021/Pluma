@@ -81,4 +81,15 @@ class Post extends Model implements HasMedia
     {
         return $this->hasMany(PostError::class);
     }
+
+    /**
+     * One attachment per post for now (Instagram/YouTube need exactly one
+     * image/video; multi-image carousels are a later phase) - registering
+     * singleFile() means a new upload automatically replaces the old one
+     * rather than accumulating.
+     */
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('default')->singleFile();
+    }
 }

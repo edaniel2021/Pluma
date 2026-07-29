@@ -47,6 +47,44 @@
                 @endif
             </div>
 
+            <div class="col-span-6">
+                <x-label for="upload" value="{{ __('Attachment (image or video)') }}" />
+
+                @php $existingMedia = $post?->getFirstMedia('default'); @endphp
+
+                @if ($existingMedia && ! $upload)
+                    <div class="mt-2 flex items-center gap-3">
+                        @if (str($existingMedia->mime_type)->startsWith('image/'))
+                            <img src="{{ $existingMedia->getUrl() }}" alt="" class="h-16 w-16 object-cover rounded">
+                        @else
+                            <span class="text-sm text-gray-600">{{ $existingMedia->file_name }}</span>
+                        @endif
+
+                        <button type="button" wire:click="removeMedia" class="text-sm text-red-600 hover:text-red-900">
+                            {{ __('Remove') }}
+                        </button>
+                    </div>
+                @endif
+
+                <input id="upload" type="file" wire:model="upload" class="mt-2 block w-full text-sm text-gray-600" />
+
+                <div wire:loading wire:target="upload" class="text-sm text-gray-500 mt-1">
+                    {{ __('Uploading...') }}
+                </div>
+
+                @if ($upload)
+                    <div class="mt-2">
+                        @if (str($upload->getMimeType())->startsWith('image/'))
+                            <img src="{{ $upload->temporaryUrl() }}" alt="" class="h-16 w-16 object-cover rounded">
+                        @else
+                            <span class="text-sm text-gray-600">{{ $upload->getClientOriginalName() }}</span>
+                        @endif
+                    </div>
+                @endif
+
+                <x-input-error for="upload" class="mt-2" />
+            </div>
+
             <div class="col-span-6 sm:col-span-3">
                 <x-label for="state" value="{{ __('State') }}" />
                 <select id="state" wire:model="state"

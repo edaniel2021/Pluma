@@ -27,6 +27,9 @@
                     <x-nav-link href="{{ route('integrations.index') }}" :active="request()->routeIs('integrations.*')">
                         {{ __('Integrations') }}
                     </x-nav-link>
+                    <x-nav-link href="{{ route('whatsapp.index') }}" :active="request()->routeIs('whatsapp.*')">
+                        {{ __('WhatsApp') }}
+                    </x-nav-link>
                 </div>
             </div>
 
@@ -165,6 +168,9 @@
             </x-responsive-nav-link>
             <x-responsive-nav-link href="{{ route('integrations.index') }}" :active="request()->routeIs('integrations.*')">
                 {{ __('Integrations') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link href="{{ route('whatsapp.index') }}" :active="request()->routeIs('whatsapp.*')">
+                {{ __('WhatsApp') }}
             </x-responsive-nav-link>
         </div>
 
