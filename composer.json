@@ -16,6 +16,7 @@
         "laravel/tinker": "^3.0",
         "league/flysystem-aws-s3-v3": "^3.35",
         "livewire/livewire": "^3.6.4",
+        "openai-php/laravel": "^0.20.0",
         "sentry/sentry-laravel": "^4.27",
         "spatie/laravel-medialibrary": "^11.23"
     },

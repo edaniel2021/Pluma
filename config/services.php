@@ -85,4 +85,11 @@ return [
         'redirect' => env('YOUTUBE_REDIRECT_URI', env('APP_URL').'/integrations/youtube/callback'),
     ],
 
+    // Used by App\Domain\Agents\Support\FalService for AI image generation,
+    // as a faster/cheaper alternative to OpenAI's Images API. No official
+    // client package exists, so this is called directly via the Http facade.
+    'fal' => [
+        'key' => env('FAL_KEY'),
+    ],
+
 ];

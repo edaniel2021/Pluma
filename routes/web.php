@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Agents\Models\AgentThread;
 use App\Domain\Billing\Http\Controllers\StripeWebhookController;
 use App\Domain\Posts\Models\Post;
 use App\Domain\WhatsApp\Models\WhatsAppAccount;
@@ -82,4 +83,12 @@ Route::middleware([
     Route::get('/whatsapp/{account}/broadcasts', function (WhatsAppAccount $account) {
         return view('whatsapp.broadcasts', ['account' => $account]);
     })->name('whatsapp.broadcasts');
+
+    Route::get('/agents', function () {
+        return view('agents.index');
+    })->name('agents.index');
+
+    Route::get('/agents/{thread}', function (AgentThread $thread) {
+        return view('agents.show', ['thread' => $thread]);
+    })->name('agents.show');
 });

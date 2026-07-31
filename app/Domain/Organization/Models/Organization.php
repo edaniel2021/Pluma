@@ -2,6 +2,7 @@
 
 namespace App\Domain\Organization\Models;
 
+use App\Domain\Agents\Models\AgentThread;
 use App\Domain\Integrations\Models\Integration;
 use App\Domain\WhatsApp\Models\WhatsAppAccount;
 use Database\Factories\OrganizationFactory;
@@ -90,5 +91,10 @@ class Organization extends JetstreamTeam implements HasMedia
     public function whatsAppAccounts(): HasMany
     {
         return $this->hasMany(WhatsAppAccount::class);
+    }
+
+    public function agentThreads(): HasMany
+    {
+        return $this->hasMany(AgentThread::class);
     }
 }
