@@ -33,6 +33,9 @@
                     <x-nav-link href="{{ route('agents.index') }}" :active="request()->routeIs('agents.*')">
                         {{ __('AI Assistant') }}
                     </x-nav-link>
+                    <x-nav-link href="{{ route('developers.index') }}" :active="request()->routeIs('developers.*')">
+                        {{ __('Developers') }}
+                    </x-nav-link>
                 </div>
             </div>
 
@@ -177,6 +180,9 @@
             </x-responsive-nav-link>
             <x-responsive-nav-link href="{{ route('agents.index') }}" :active="request()->routeIs('agents.*')">
                 {{ __('AI Assistant') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link href="{{ route('developers.index') }}" :active="request()->routeIs('developers.*')">
+                {{ __('Developers') }}
             </x-responsive-nav-link>
         </div>
 

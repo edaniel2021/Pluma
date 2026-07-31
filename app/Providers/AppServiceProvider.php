@@ -3,8 +3,12 @@
 namespace App\Providers;
 
 use App\Domain\Organization\Models\Organization;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Cashier\Cashier;
+use Laravel\Passport\Passport;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\FacebookProvider;
 use Laravel\Socialite\Two\GoogleProvider;
@@ -46,5 +50,34 @@ class AppServiceProvider extends ServiceProvider
         Socialite::extend('instagram-facebook', function ($app) {
             return Socialite::buildProvider(FacebookProvider::class, config('services.instagram-facebook'));
         });
+
+        // Tiered by the requesting token owner's organization subscription
+        // tier (config/billing.php's api_rate_limits) - covers both a
+        // first-party Sanctum personal access token and a third-party
+        // Passport-issued OAuth token, since both resolve to a User via
+        // $request->user().
+        RateLimiter::for('api', function (Request $request) {
+            $tier = $request->user()?->currentTeam?->subscription_tier ?? 'default';
+            $perMinute = config("billing.api_rate_limits.{$tier}", config('billing.api_rate_limits.default'));
+
+            return Limit::perMinute($perMinute)->by($request->user()?->id ?: $request->ip());
+        });
+
+        // Same ability strings as Jetstream's Sanctum personal-access-token
+        // permissions (JetstreamServiceProvider::configurePermissions()) so
+        // routes/api.php's `abilities:*` middleware checks work uniformly
+        // whether the caller authenticated with a first-party Sanctum token
+        // or a third-party app's Passport-issued OAuth token.
+        Passport::tokensCan([
+            'read' => 'View your data',
+            'create' => 'Create new records on your behalf',
+            'update' => 'Update your existing records',
+            'delete' => 'Delete your records',
+        ]);
+
+        // Passport v13 ships no default consent-screen view (older versions
+        // did) - without this binding, GET /oauth/authorize 500s with
+        // "Target [AuthorizationViewResponse] is not instantiable."
+        Passport::authorizationView('auth.oauth-authorize');
     }
 }

@@ -23,4 +23,24 @@ return [
         'ultimate' => env('STRIPE_PRICE_ULTIMATE'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Public API Rate Limits
+    |--------------------------------------------------------------------------
+    |
+    | Requests/minute for routes/api.php's `v1` group (see the 'api'
+    | RateLimiter defined in AppServiceProvider), keyed by the same tier
+    | strings as `tiers` above. 'default' applies when
+    | `organizations.subscription_tier` is null (no active subscription).
+    |
+    */
+
+    'api_rate_limits' => [
+        'default' => 30,
+        'standard' => 60,
+        'pro' => 300,
+        'team' => 600,
+        'ultimate' => 1200,
+    ],
+
 ];

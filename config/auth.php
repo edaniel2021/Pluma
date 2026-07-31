@@ -42,6 +42,17 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+
+        // Third-party OAuth apps (Laravel Passport) authenticate against this
+        // guard - distinct from 'sanctum', which covers first-party personal
+        // access tokens. routes/api.php's v1 group tries both via
+        // `auth:sanctum,api`. See App\Models\User::oauthClients() for why
+        // Passport's own HasApiTokens trait isn't used here (it collides
+        // with Sanctum's own trait of the same name).
+        'api' => [
+            'driver' => 'passport',
+            'provider' => 'users',
+        ],
     ],
 
     /*

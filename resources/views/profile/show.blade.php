@@ -33,6 +33,14 @@
                 @livewire('profile.logout-other-browser-sessions-form')
             </div>
 
+            @if (Laravel\Jetstream\Jetstream::hasApiFeatures())
+                <x-section-border />
+
+                <div class="mt-10 sm:mt-0">
+                    @livewire('api.api-token-manager', ['tokens' => Auth::user()->tokens])
+                </div>
+            @endif
+
             @if (Laravel\Jetstream\Jetstream::hasAccountDeletionFeatures())
                 <x-section-border />
 

@@ -91,4 +91,8 @@ Route::middleware([
     Route::get('/agents/{thread}', function (AgentThread $thread) {
         return view('agents.show', ['thread' => $thread]);
     })->name('agents.show');
+
+    Route::get('/developers', function () {
+        return view('developers.index');
+    })->name('developers.index');
 });
