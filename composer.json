@@ -12,6 +12,7 @@
         "laravel/horizon": "^5.48",
         "laravel/jetstream": "^5.5",
         "laravel/passport": "^13.7",
+        "laravel/reverb": "^1.11",
         "laravel/sanctum": "^4.0",
         "laravel/socialite": "^5.29",
         "laravel/tinker": "^3.0",

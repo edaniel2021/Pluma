@@ -46,6 +46,14 @@ class Composer extends Component
      */
     public $upload = null;
 
+    /**
+     * Base64 PNG data URL from the client-side Cropper.js step (see
+     * resources/js/app.js's `imageCropper` Alpine component) - the plan's
+     * reduced-scope substitute for a full Polotno embed. When set, this is
+     * attached instead of the raw $upload file on save().
+     */
+    public ?string $croppedImage = null;
+
     #[Url]
     public ?string $date = null;
 
@@ -95,7 +103,11 @@ class Composer extends Component
             ? $updatePost->execute($this->post, $validated)
             : $createPost->execute($validated);
 
-        if ($upload) {
+        if ($this->croppedImage) {
+            $post->addMediaFromBase64($this->croppedImage)
+                ->usingName('cropped-image')
+                ->toMediaCollection('default');
+        } elseif ($upload) {
             $post->addMedia($upload->getRealPath())
                 ->usingFileName($upload->getClientOriginalName())
                 ->toMediaCollection('default');
@@ -107,6 +119,7 @@ class Composer extends Component
     public function removeMedia(): void
     {
         $this->post?->clearMediaCollection('default');
+        $this->reset('croppedImage');
     }
 
     public function delete(DeletePost $deletePost): void

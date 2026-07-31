@@ -66,19 +66,36 @@
                     </div>
                 @endif
 
-                <input id="upload" type="file" wire:model="upload" class="mt-2 block w-full text-sm text-gray-600" />
+                <div x-data="imageCropper()">
+                    <input id="upload" type="file" wire:model="upload" x-on:change="handleFileSelect($event)"
+                           class="mt-2 block w-full text-sm text-gray-600" />
+
+                    {{-- wire:ignore protects Cropper.js's injected elements from being wiped
+                         by Livewire's morph - Alpine's x-show still toggles it independently. --}}
+                    <div wire:ignore x-show="cropSrc" style="display: none" class="mt-3">
+                        <img x-ref="cropTarget" :src="cropSrc" class="max-w-full" style="max-height: 300px">
+                    </div>
+
+                    <div x-show="cropSrc" style="display: none" class="mt-2 flex items-center gap-3">
+                        <button type="button" x-on:click="applyCrop" class="text-sm text-indigo-600 hover:text-indigo-900">
+                            {{ __('Apply Crop') }}
+                        </button>
+                        <button type="button" x-on:click="cancelCrop" class="text-sm text-gray-600 hover:text-gray-900">
+                            {{ __('Cancel') }}
+                        </button>
+                        <span x-show="$wire.croppedImage" style="display: none" class="text-xs text-green-600">
+                            {{ __('Crop applied - will replace the original upload on save.') }}
+                        </span>
+                    </div>
+                </div>
 
                 <div wire:loading wire:target="upload" class="text-sm text-gray-500 mt-1">
                     {{ __('Uploading...') }}
                 </div>
 
-                @if ($upload)
+                @if ($upload && ! str($upload->getMimeType())->startsWith('image/'))
                     <div class="mt-2">
-                        @if (str($upload->getMimeType())->startsWith('image/'))
-                            <img src="{{ $upload->temporaryUrl() }}" alt="" class="h-16 w-16 object-cover rounded">
-                        @else
-                            <span class="text-sm text-gray-600">{{ $upload->getClientOriginalName() }}</span>
-                        @endif
+                        <span class="text-sm text-gray-600">{{ $upload->getClientOriginalName() }}</span>
                     </div>
                 @endif
 

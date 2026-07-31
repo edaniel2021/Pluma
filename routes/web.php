@@ -95,4 +95,17 @@ Route::middleware([
     Route::get('/developers', function () {
         return view('developers.index');
     })->name('developers.index');
+
+    // Platform-wide, not organization-scoped - see the is_platform_admin
+    // migration docblock for why this is a separate gate from the per-org
+    // superadmin/admin/user roles.
+    Route::middleware('can:access-admin-panel')->prefix('admin')->group(function () {
+        Route::get('/errors', function () {
+            return view('admin.errors');
+        })->name('admin.errors');
+
+        Route::get('/stats', function () {
+            return view('admin.stats');
+        })->name('admin.stats');
+    });
 });

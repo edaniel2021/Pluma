@@ -36,6 +36,11 @@
                     <x-nav-link href="{{ route('developers.index') }}" :active="request()->routeIs('developers.*')">
                         {{ __('Developers') }}
                     </x-nav-link>
+                    @can('access-admin-panel')
+                        <x-nav-link href="{{ route('admin.stats') }}" :active="request()->routeIs('admin.*')">
+                            {{ __('Admin') }}
+                        </x-nav-link>
+                    @endcan
                 </div>
             </div>
 
@@ -184,6 +189,11 @@
             <x-responsive-nav-link href="{{ route('developers.index') }}" :active="request()->routeIs('developers.*')">
                 {{ __('Developers') }}
             </x-responsive-nav-link>
+            @can('access-admin-panel')
+                <x-responsive-nav-link href="{{ route('admin.stats') }}" :active="request()->routeIs('admin.*')">
+                    {{ __('Admin') }}
+                </x-responsive-nav-link>
+            @endcan
         </div>
 
         <!-- Responsive Settings Options -->

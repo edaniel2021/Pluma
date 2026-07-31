@@ -70,6 +70,10 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            // Deliberately not in $fillable - gates the platform-wide /admin
+            // panel and must only ever be set directly (tinker/seeder), not
+            // via mass assignment.
+            'is_platform_admin' => 'boolean',
         ];
     }
 

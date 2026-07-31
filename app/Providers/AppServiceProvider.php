@@ -3,8 +3,10 @@
 namespace App\Providers;
 
 use App\Domain\Organization\Models\Organization;
+use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Cashier\Cashier;
@@ -79,5 +81,11 @@ class AppServiceProvider extends ServiceProvider
         // did) - without this binding, GET /oauth/authorize 500s with
         // "Target [AuthorizationViewResponse] is not instantiable."
         Passport::authorizationView('auth.oauth-authorize');
+
+        // Gates the platform-wide /admin panel - distinct from the per-
+        // organization superadmin/admin/user roles (JetstreamServiceProvider),
+        // which are about permissions *within* an organization, not
+        // operating the SaaS itself.
+        Gate::define('access-admin-panel', fn (User $user) => $user->is_platform_admin);
     }
 }

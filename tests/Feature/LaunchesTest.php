@@ -184,4 +184,35 @@ class LaunchesTest extends TestCase
 
         $this->assertSame(0, $post->fresh()->getMedia('default')->count());
     }
+
+    /**
+     * The Cropper.js client-side step (resources/js/app.js's `imageCropper`
+     * Alpine component) syncs its result as a base64 PNG via
+     * $wire.set('croppedImage', ...) - this is the plan's reduced-scope
+     * substitute for a full Polotno embed. Server-side, that's decoded via
+     * spatie/laravel-medialibrary's addMediaFromBase64(), the same method
+     * the AI agent's GenerateImageTool already uses.
+     */
+    public function test_a_cropped_image_is_attached_instead_of_the_raw_upload(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $this->actingAs($user);
+        $integration = Integration::factory()->create();
+
+        // 1x1 transparent PNG.
+        $croppedPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+        Livewire::test(Composer::class)
+            ->set('integration_id', $integration->id)
+            ->set('content', 'A launch with a cropped picture.')
+            ->set('upload', UploadedFile::fake()->image('launch.jpg'))
+            ->set('croppedImage', $croppedPng)
+            ->call('save');
+
+        $post = Post::first();
+
+        $this->assertNotNull($post);
+        $this->assertSame(1, $post->getMedia('default')->count());
+        $this->assertSame('cropped-image', $post->getFirstMedia('default')->name);
+    }
 }

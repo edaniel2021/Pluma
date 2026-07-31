@@ -5,6 +5,7 @@ namespace App\Livewire\Agents;
 use App\Domain\Agents\Actions\SendAgentMessage;
 use App\Domain\Agents\Enums\AgentMessageRole;
 use App\Domain\Agents\Models\AgentThread;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class Chat extends Component
@@ -16,6 +17,25 @@ class Chat extends Component
     public function mount(AgentThread $thread): void
     {
         $this->thread = $thread;
+    }
+
+    /**
+     * Real-time upgrade over the wire:poll fallback below: Reverb pushes
+     * this the moment AgentMessage::booted() fires AgentMessageCreated for
+     * this thread. The handler body is deliberately empty - re-rendering
+     * with a freshly rehydrated $thread (Livewire re-fetches public model
+     * properties from the database each request) is all that's needed,
+     * rather than trusting the event's payload.
+     *
+     * The leading `.` on the event name is required: without it, Echo
+     * assumes the event class lives under `App\Events\*` (the historical
+     * Laravel default) and never matches AgentMessageCreated::broadcastAs(),
+     * so the listener silently never fires.
+     */
+    #[On('echo-private:agent-thread.{thread.id},.AgentMessageCreated')]
+    public function onAgentMessageCreated(): void
+    {
+        //
     }
 
     /**
