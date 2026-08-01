@@ -1,0 +1,53 @@
+# Production-only additions layered on top of the base compose.yaml.
+# Local dev deliberately doesn't run these as services - you start
+# `sail artisan horizon` / `reverb:start` manually in a spare terminal only
+# when you need them. Production needs them running continuously with
+# auto-restart, which these three extra services provide (using Docker's
+# own restart policy for supervision - simpler than adding supervisord
+# inside the image for just three commands).
+#
+# Usage (from the project root, on the server):
+#   docker compose -f compose.yaml -f deploy/docker-compose.prod.yml up -d
+services:
+    laravel.test:
+        restart: unless-stopped
+
+    horizon:
+        image: sail-8.5/app
+        restart: unless-stopped
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+        depends_on:
+            - pgsql
+            - redis
+        command: php artisan horizon
+
+    reverb:
+        image: sail-8.5/app
+        restart: unless-stopped
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+        depends_on:
+            - pgsql
+            - redis
+        command: php artisan reverb:start
+
+    scheduler:
+        image: sail-8.5/app
+        restart: unless-stopped
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+        depends_on:
+            - pgsql
+            - redis
+        # Laravel's scheduler is designed to be invoked once a minute (e.g.
+        # via cron) and exit, not to run as a long-lived process itself -
+        # this loop is the equivalent of that cron entry for a container
+        # that has no host crontab to hook into.
+        command: sh -c "while true; do php artisan schedule:run; sleep 60; done"

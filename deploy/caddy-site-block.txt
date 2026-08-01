@@ -1,0 +1,47 @@
+Add this as a second site block in smarthomecare's docker/caddy/Caddyfile,
+alongside the existing scheduling.alessahomecare.com block - don't touch
+that one. Adjust the hostname if you want a different subdomain.
+
+pluma.alessahomecare.com {
+    encode zstd gzip
+
+    # Main app - Pluma's compose.yaml pins this to host port 8090
+    # (APP_PORT in its .env). host.docker.internal resolves to the VM's
+    # own host network from inside the Caddy container.
+    reverse_proxy host.docker.internal:8090
+
+    # Reverb (real-time AI chat websocket) - Pluma's REVERB_SERVER_PORT.
+    # Caddy's reverse_proxy handles the Upgrade/Connection headers for
+    # websocket upgrades automatically, no extra config needed.
+    reverse_proxy /app/* host.docker.internal:8091
+}
+
+Two things to check/do before this works:
+
+1. host.docker.internal needs to resolve from INSIDE smarthomecare's Caddy
+   container. On Docker Desktop this is automatic; on Linux Docker Engine
+   (which a VM almost certainly is) it needs an explicit extra_hosts entry
+   on the `web` service in smarthomecare's docker-compose.yml:
+
+       services:
+         web:
+           extra_hosts:
+             - "host.docker.internal:host-gateway"
+
+   Check if that's already there - if not, add it (needs Docker Engine
+   >= 20.10). Pluma's own compose.yaml already has this same entry on its
+   `laravel.test` service for the reverse case (container -> host), for
+   reference.
+
+2. Since the Caddyfile is COPY'd into smarthomecare's image at build time
+   (per its Dockerfile), this needs `docker compose build web` + recreate
+   to take effect - not just a config reload or plain restart.
+
+3. Point DNS for pluma.alessahomecare.com at the server's IP BEFORE
+   rebuilding/recreating the web container, or Caddy's automatic Let's
+   Encrypt certificate request for the new site block will fail.
+
+After deploying Pluma itself with `docker compose up -d` (APP_PORT=8090,
+REVERB_SERVER_PORT=8091 already set in its .env - see production.env.example
+in this same folder), do the above three steps, then
+https://pluma.alessahomecare.com should route through to it.
