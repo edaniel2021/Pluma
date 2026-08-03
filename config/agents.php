@@ -28,7 +28,14 @@ return [
     // is 'gemini'. Model IDs use Google's own naming (not date-versioned
     // like LinkedIn's API), so this doesn't have the same "current month
     // isn't active yet" trap LinkedInProvider hit.
-    'gemini_model' => env('GEMINI_AGENT_MODEL', 'gemini-3.6-flash'),
+    //
+    // Deliberately gemini-2.5-flash, not the newer gemini-3.6-flash: the
+    // free tier caps the newest model at just 20 requests/day (hit for
+    // real during dev testing - a single chat turn with a couple of tool
+    // calls burns several of those), versus 250/day for this one. Same
+    // "fast, cheap" capability tier either way for a tool-calling agent -
+    // not worth the newer model's much tighter free quota here.
+    'gemini_model' => env('GEMINI_AGENT_MODEL', 'gemini-2.5-flash'),
     'gemini_api_key' => env('GEMINI_API_KEY'),
 
     // Image-generation priority (see GenerateImageTool): FAL first if
