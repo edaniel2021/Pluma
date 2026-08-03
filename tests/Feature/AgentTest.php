@@ -220,6 +220,60 @@ class AgentTest extends TestCase
         });
     }
 
+    /**
+     * Regression test for a real Gemini 400 hit via the AI Assistant chat:
+     * "Invalid JSON payload received... Proto field is not repeating,
+     * cannot start list" - Gemini's args/response fields are object-typed
+     * (Struct), but json_decode('{}', true) and json_decode('[]', true)
+     * both produce the same empty PHP array, and json_encode([]) always
+     * renders `[]`, never `{}`. A no-argument tool call (list_channels())
+     * or a no-result tool response therefore silently sent the wrong JSON
+     * shape. Http::fake()'s decoded assertSent() body can't tell `{}` from
+     * `[]` either (same PHP-array collapse), so this checks the raw
+     * request body string instead.
+     */
+    public function test_gemini_service_sends_empty_tool_arguments_as_a_json_object_not_an_array(): void
+    {
+        config(['agents.gemini_api_key' => 'test-gemini-key']);
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::response([
+                'candidates' => [['content' => ['parts' => [['text' => 'ok']]]]],
+            ], 200),
+        ]);
+
+        $messages = [
+            ['role' => 'system', 'content' => 'You are a helpful assistant.'],
+            ['role' => 'user', 'content' => 'What channels do I have?'],
+            [
+                'role' => 'assistant',
+                'content' => null,
+                'tool_calls' => [[
+                    'id' => 'call_0',
+                    'type' => 'function',
+                    'function' => ['name' => 'list_channels', 'arguments' => '{}'],
+                ]],
+            ],
+            [
+                'role' => 'tool',
+                'tool_call_id' => 'call_0',
+                'tool_name' => 'list_channels',
+                'content' => '{}',
+            ],
+        ];
+
+        app(GeminiService::class)->chat($messages);
+
+        Http::assertSent(function ($request) {
+            $body = $request->body();
+
+            return str_contains($body, '"args":{}')
+                && str_contains($body, '"response":{}')
+                && ! str_contains($body, '"args":[]')
+                && ! str_contains($body, '"response":[]');
+        });
+    }
+
     public function test_the_conversation_service_uses_gemini_when_configured(): void
     {
         config(['agents.chat_provider' => 'gemini', 'agents.gemini_api_key' => 'test-gemini-key']);

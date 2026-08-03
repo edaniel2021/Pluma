@@ -89,7 +89,14 @@ class GeminiService implements ChatCompletionContract
                         'functionResponse' => [
                             'name' => $message['tool_name'],
                             'id' => $message['tool_call_id'],
-                            'response' => json_decode($message['content'], true) ?? [],
+                            // (object) cast, not the bare decoded array: an
+                            // empty/associative PHP array always encodes as
+                            // JSON `[]`, but Gemini's response field is a
+                            // Struct (object-typed) - a no-result tool call
+                            // would otherwise send `[]` where `{}` is
+                            // required, and Gemini 400s with "Proto field
+                            // is not repeating, cannot start list."
+                            'response' => (object) (json_decode($message['content'], true) ?? []),
                         ],
                     ]],
                 ];
@@ -104,7 +111,13 @@ class GeminiService implements ChatCompletionContract
                         'functionCall' => [
                             'id' => $call['id'],
                             'name' => $call['function']['name'],
-                            'args' => json_decode($call['function']['arguments'], true) ?? [],
+                            // Same (object) cast and same reason as
+                            // functionResponse.response above - a
+                            // no-argument tool call (e.g. list_channels())
+                            // decodes its '{}' arguments string to an empty
+                            // PHP array, which json_encode always renders
+                            // as `[]` unless forced back to an object.
+                            'args' => (object) (json_decode($call['function']['arguments'], true) ?? []),
                         ],
                     ], $message['tool_calls']),
                 ];
