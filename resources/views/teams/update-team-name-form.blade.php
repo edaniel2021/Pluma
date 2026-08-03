@@ -34,6 +34,26 @@
 
             <x-input-error for="name" class="mt-2" />
         </div>
+
+        <!-- Organization Timezone -->
+        <div class="col-span-6 sm:col-span-4">
+            <x-label for="timezone" value="{{ __('Timezone') }}" />
+
+            <select id="timezone"
+                    wire:model="state.timezone"
+                    class="border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm mt-1 block w-full"
+                    @disabled(! Gate::check('update', $team))>
+                @foreach (\DateTimeZone::listIdentifiers() as $timezone)
+                    <option value="{{ $timezone }}">{{ $timezone }}</option>
+                @endforeach
+            </select>
+
+            <p class="mt-1 text-sm text-gray-600">
+                {{ __('All post scheduling for this organization is interpreted in this timezone, regardless of each member\'s own local time.') }}
+            </p>
+
+            <x-input-error for="timezone" class="mt-2" />
+        </div>
     </x-slot>
 
     @if (Gate::check('update', $team))

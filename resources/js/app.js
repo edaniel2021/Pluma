@@ -42,7 +42,7 @@ document.addEventListener('alpine:init', () => {
         },
     }));
 
-    Alpine.data('launchesCalendar', (events) => ({
+    Alpine.data('launchesCalendar', (events, timezone) => ({
         calendar: null,
 
         init() {
@@ -52,6 +52,11 @@ document.addEventListener('alpine:init', () => {
                 events,
                 editable: true,
                 height: 'auto',
+                // Fixed to the org's timezone (not FullCalendar's 'local'
+                // default) so every member sees the same schedule time
+                // regardless of their own browser's timezone - matches the
+                // server-side conversion in Composer.php/Calendar::reschedule().
+                timeZone: timezone,
 
                 eventDrop: (info) => {
                     this.$wire.reschedule(info.event.extendedProps.postId, info.event.startStr).then((success) => {

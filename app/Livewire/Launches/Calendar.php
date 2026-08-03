@@ -4,6 +4,8 @@ namespace App\Livewire\Launches;
 
 use App\Domain\Posts\Enums\PostState;
 use App\Domain\Posts\Models\Post;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 
 class Calendar extends Component
@@ -21,7 +23,13 @@ class Calendar extends Component
             return false;
         }
 
-        $post->update(['scheduled_at' => $newDateTime]);
+        // FullCalendar is configured (see resources/js/app.js) to render in
+        // the org's timezone via its `timeZone` option, so the string it
+        // hands back here is a naive wall-clock time in that same zone, not
+        // UTC - same conversion as the Composer's scheduled_at input.
+        $post->update([
+            'scheduled_at' => Carbon::parse($newDateTime, Auth::user()->currentTeam->timezone)->setTimezone('UTC'),
+        ]);
 
         return true;
     }
@@ -49,6 +57,9 @@ class Calendar extends Component
             ],
         ])->values();
 
-        return view('livewire.launches.calendar', ['events' => $events]);
+        return view('livewire.launches.calendar', [
+            'events' => $events,
+            'timezone' => Auth::user()->currentTeam->timezone,
+        ]);
     }
 }

@@ -7,7 +7,7 @@
 
     <div class="bg-white shadow sm:rounded-lg p-4"
          wire:ignore
-         x-data="launchesCalendar(@js($events))"
+         x-data="launchesCalendar(@js($events), @js($timezone))"
          data-compose-url="{{ route('launches.compose') }}"
          data-edit-url-base="{{ url('/launches') }}">
         <div x-ref="calendar"></div>

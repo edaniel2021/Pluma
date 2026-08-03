@@ -7,6 +7,7 @@ use App\Domain\Posts\Actions\DeletePost;
 use App\Domain\Posts\Actions\UpdatePost;
 use App\Domain\Posts\Enums\PostState;
 use App\Domain\Posts\Models\Post;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Url;
@@ -64,7 +65,13 @@ class Composer extends Component
             $this->content = $post->content;
             $this->integration_id = $post->integration_id;
             $this->state = $post->state->value;
-            $this->scheduled_at = $post->scheduled_at?->format('Y-m-d\TH:i');
+            // scheduled_at is stored in UTC - shift to the org's timezone so
+            // the datetime-local input shows the time members actually
+            // scheduled it for, not the raw UTC instant.
+            $this->scheduled_at = $post->scheduled_at
+                ?->clone()
+                ->setTimezone(Auth::user()->currentTeam->timezone)
+                ->format('Y-m-d\TH:i');
 
             return;
         }
@@ -98,6 +105,17 @@ class Composer extends Component
         $validated = $this->validate();
         $upload = $validated['upload'] ?? null;
         unset($validated['upload']);
+
+        // The datetime-local input has no timezone of its own - it's a
+        // naive wall-clock string meant in the org's configured timezone,
+        // not the server's. Convert to UTC before it hits the datetime cast
+        // (which would otherwise assume config('app.timezone'), i.e. UTC).
+        if ($validated['scheduled_at']) {
+            $validated['scheduled_at'] = Carbon::parse(
+                $validated['scheduled_at'],
+                Auth::user()->currentTeam->timezone
+            )->setTimezone('UTC');
+        }
 
         $post = $this->post
             ? $updatePost->execute($this->post, $validated)

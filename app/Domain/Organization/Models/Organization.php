@@ -44,6 +44,7 @@ class Organization extends JetstreamTeam implements HasMedia
      */
     protected $fillable = [
         'name',
+        'timezone',
         'personal_team',
         'subscription_tier',
     ];
