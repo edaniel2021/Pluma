@@ -25,6 +25,13 @@ services:
             XDEBUG_MODE: '${SAIL_XDEBUG_MODE:-off}'
             XDEBUG_CONFIG: '${SAIL_XDEBUG_CONFIG:-client_host=host.docker.internal}'
             IGNITION_LOCAL_SITES_PATH: '${PWD}'
+            # PHP's built-in server (php artisan serve, what this container
+            # runs) reads this at its own native SAPI startup - before
+            # Laravel's framework code, and thus its .env parsing, ever
+            # runs - so setting it only in .env has no effect. It has to be
+            # a real container env var, forwarded here the same way the
+            # others above are.
+            PHP_CLI_SERVER_WORKERS: '${PHP_CLI_SERVER_WORKERS:-4}'
         volumes:
             - '.:/var/www/html'
         networks:
