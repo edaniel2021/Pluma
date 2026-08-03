@@ -52,6 +52,11 @@ class OpenAiService implements ChatCompletionContract
 
     /**
      * Returns base64-encoded image data (PNG).
+     *
+     * No response_format param - that's a DALL-E-2/3-only parameter
+     * (both shut down 2026-05-12). The successor model, gpt-image-1,
+     * doesn't recognize it at all ("Unknown parameter: 'response_format'")
+     * and always returns b64_json by default regardless.
      */
     public function generateImage(string $prompt): string
     {
@@ -60,7 +65,6 @@ class OpenAiService implements ChatCompletionContract
             'prompt' => $prompt,
             'n' => 1,
             'size' => '1024x1024',
-            'response_format' => 'b64_json',
         ]);
 
         return $response->data[0]->b64_json;

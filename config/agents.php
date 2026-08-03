@@ -43,7 +43,11 @@ return [
     // chat_provider is 'gemini' (avoids needing an OpenAI/FAL key at all
     // in a Gemini-centric setup), then OpenAI's Images API as the final
     // fallback.
-    'openai_image_model' => env('OPENAI_IMAGE_MODEL', 'dall-e-3'),
+    //
+    // gpt-image-1, not dall-e-3: DALL-E-2/3 were both shut down entirely
+    // on 2026-05-12. gpt-image-1 is the successor and has a different
+    // request shape (see OpenAiService::generateImage()'s comment).
+    'openai_image_model' => env('OPENAI_IMAGE_MODEL', 'gpt-image-1'),
 
     // FAL.ai model path (appended to https://fal.run/) used for image
     // generation when FAL_KEY is configured.
