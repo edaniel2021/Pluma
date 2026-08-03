@@ -19,6 +19,16 @@ services:
             - '.:/var/www/html'
         networks:
             - sail
+        # Without this, start-container's `exec gosu $WWWUSER "$@"` runs
+        # with WWWUSER empty (only compose.yaml's laravel.test service sets
+        # it) - bash then drops the empty argument entirely, shifting the
+        # command's own first word ("php") into gosu's username slot, which
+        # crash-loops with "unable to find user php: no matching entries in
+        # passwd file". Matches the WWWUSER wiring compose.yaml already has
+        # for laravel.test.
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
         depends_on:
             - pgsql
             - redis
@@ -31,6 +41,9 @@ services:
             - '.:/var/www/html'
         networks:
             - sail
+        environment: # see horizon's comment above on why this is required
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
         depends_on:
             - pgsql
             - redis
@@ -43,6 +56,9 @@ services:
             - '.:/var/www/html'
         networks:
             - sail
+        environment: # see horizon's comment above on why this is required
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
         depends_on:
             - pgsql
             - redis
