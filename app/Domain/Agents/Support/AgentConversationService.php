@@ -33,12 +33,11 @@ class AgentConversationService
     {
         $organization = $thread->organization;
         $user = $thread->user;
-        $tools = $this->toolDefinitions();
 
         for ($i = 0; $i < config('agents.max_tool_iterations'); $i++) {
             $result = $this->chatCompletions->chat(
                 $this->buildMessages($thread, $organization),
-                $tools,
+                $this->toolDefinitions($thread),
             );
 
             if ($result->toolCalls === []) {
@@ -109,10 +108,20 @@ class AgentConversationService
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function toolDefinitions(): array
+    private function toolDefinitions(AgentThread $thread): array
     {
+        // Belt-and-suspenders on top of buildMessages()'s fresh query below:
+        // list_channels is a pure lookup, so once it's succeeded earlier in
+        // this thread, stop even offering it rather than relying solely on
+        // the system prompt to stop the model re-calling it.
+        $alreadyListedChannels = $thread->messages()
+            ->where('role', AgentMessageRole::Tool)
+            ->where('tool_name', 'list_channels')
+            ->exists();
+
         return collect(config('agents.tools'))
             ->map(fn (string $class) => App::make($class))
+            ->reject(fn (AgentToolContract $tool) => $alreadyListedChannels && $tool->name() === 'list_channels')
             ->map(fn (AgentToolContract $tool) => [
                 'type' => 'function',
                 'function' => [
@@ -133,7 +142,16 @@ class AgentConversationService
             ['role' => 'system', 'content' => $this->systemPrompt($organization)],
         ];
 
-        foreach ($thread->messages as $message) {
+        // A fresh query, not the cached $thread->messages relation: within
+        // this same respond() call, earlier loop iterations create new
+        // messages via $thread->messages()->create() (the relation method),
+        // which does NOT update $thread->messages (the already-cached
+        // property) - every iteration after the first would otherwise see
+        // the exact same stale snapshot from before the loop even started,
+        // missing its own prior tool calls entirely. That's what was
+        // actually causing the model to repeat list_channels every
+        // iteration - it never saw evidence it had already been called.
+        foreach ($thread->messages()->orderBy('id')->get() as $message) {
             $messages[] = $this->toWireMessage($message);
         }
 

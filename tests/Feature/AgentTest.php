@@ -151,6 +151,71 @@ class AgentTest extends TestCase
         CurrentOrganization::clear();
     }
 
+    /**
+     * Regression test for a real staging incident: the model called
+     * list_channels 5 times in a row and never progressed to
+     * generate_image/schedule_post. Root cause was buildMessages() reading
+     * $thread->messages (the cached relation property) instead of a fresh
+     * query - $thread->messages()->create() (used by respond()'s loop each
+     * iteration) does not update an already-loaded relation cache, so every
+     * iteration after the first saw the exact same stale snapshot from
+     * before the loop started, missing its own prior tool calls entirely.
+     * Reproduces that exact caching gap directly rather than orchestrating
+     * a multi-round fake exchange.
+     */
+    public function test_build_messages_reflects_messages_created_after_the_relation_was_first_cached(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $organization = $user->currentTeam;
+        CurrentOrganization::set($organization);
+        $thread = $organization->agentThreads()->create(['user_id' => $user->id]);
+        $thread->messages()->create(['role' => AgentMessageRole::User, 'content' => 'hi']);
+
+        // Forces the relation to cache at this point, exactly as the loop's
+        // first buildMessages() call would.
+        $thread->messages;
+
+        // What a later loop iteration does: create via the relation method,
+        // not the cached property.
+        $thread->messages()->create(['role' => AgentMessageRole::Assistant, 'content' => 'a later reply']);
+
+        $method = new \ReflectionMethod(AgentConversationService::class, 'buildMessages');
+        $messages = $method->invoke(app(AgentConversationService::class), $thread, $organization);
+
+        $this->assertTrue(
+            collect($messages)->contains(fn ($m) => ($m['content'] ?? null) === 'a later reply'),
+            'buildMessages() did not see a message created after the relation was already cached.'
+        );
+
+        CurrentOrganization::clear();
+    }
+
+    public function test_tool_definitions_stop_offering_list_channels_once_it_has_already_succeeded(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $organization = $user->currentTeam;
+        CurrentOrganization::set($organization);
+        $thread = $organization->agentThreads()->create(['user_id' => $user->id]);
+        $thread->messages()->create(['role' => AgentMessageRole::User, 'content' => 'hi']);
+        $thread->messages()->create([
+            'role' => AgentMessageRole::Tool,
+            'tool_name' => 'list_channels',
+            'tool_call_id' => 'call_1',
+            'content' => '{"channels":[]}',
+        ]);
+
+        $method = new \ReflectionMethod(AgentConversationService::class, 'toolDefinitions');
+        $tools = $method->invoke(app(AgentConversationService::class), $thread);
+
+        $toolNames = collect($tools)->pluck('function.name')->all();
+
+        $this->assertNotContains('list_channels', $toolNames);
+        $this->assertContains('generate_image', $toolNames);
+        $this->assertContains('schedule_post', $toolNames);
+
+        CurrentOrganization::clear();
+    }
+
     public function test_gemini_service_translates_messages_and_tools_and_parses_the_response(): void
     {
         config(['agents.gemini_api_key' => 'test-gemini-key']);
