@@ -32,7 +32,6 @@ export default {
                 fifth: 'var(--color-fifth)',
                 sixth: 'var(--color-sixth)',
                 seventh: 'var(--color-seventh)',
-                gray: 'var(--color-gray)',
                 input: 'var(--color-input)',
                 inputText: 'var(--color-input-text)',
                 tableBorder: 'var(--color-table-border)',
