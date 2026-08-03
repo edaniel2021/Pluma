@@ -4,6 +4,7 @@ namespace App\Domain\Agents\Tools;
 
 use App\Domain\Agents\Contracts\AgentToolContract;
 use App\Domain\Agents\Support\FalService;
+use App\Domain\Agents\Support\GeminiService;
 use App\Domain\Agents\Support\OpenAiService;
 use App\Domain\Organization\Models\Organization;
 use App\Models\User;
@@ -12,6 +13,7 @@ class GenerateImageTool implements AgentToolContract
 {
     public function __construct(
         private readonly FalService $fal,
+        private readonly GeminiService $gemini,
         private readonly OpenAiService $openAi,
     ) {}
 
@@ -47,9 +49,15 @@ class GenerateImageTool implements AgentToolContract
             return ['error' => 'prompt is required.'];
         }
 
-        $fileAdder = $this->fal->isConfigured()
-            ? $organization->addMediaFromUrl($this->fal->generateImage($prompt))
-            : $organization->addMediaFromBase64($this->openAi->generateImage($prompt));
+        // FAL first if configured (generally cheaper/faster), then Gemini
+        // if that's the active chat provider (avoids also needing an
+        // OpenAI/FAL key in an otherwise Gemini-only setup), then OpenAI's
+        // Images API as the final fallback.
+        $fileAdder = match (true) {
+            $this->fal->isConfigured() => $organization->addMediaFromUrl($this->fal->generateImage($prompt)),
+            config('agents.chat_provider') === 'gemini' => $organization->addMediaFromBase64($this->gemini->generateImage($prompt)),
+            default => $organization->addMediaFromBase64($this->openAi->generateImage($prompt)),
+        };
 
         $media = $fileAdder->usingName($prompt)->toMediaCollection('library');
 

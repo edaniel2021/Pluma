@@ -67,6 +67,44 @@ class GeminiService implements ChatCompletionContract
     }
 
     /**
+     * Returns base64-encoded image data (PNG), same contract as
+     * OpenAiService::generateImage() so GenerateImageTool can consume
+     * either identically via addMediaFromBase64().
+     *
+     * Unlike Imagen (a separate, now-deprecated API - shutting down
+     * August 17, 2026), current Gemini image generation is native to
+     * certain "Nano Banana" chat models themselves: a normal
+     * generateContent call against an image-capable model, with
+     * responseModalities telling it to return image data instead of (or
+     * alongside) text.
+     */
+    public function generateImage(string $prompt): string
+    {
+        $response = Http::withHeaders(['x-goog-api-key' => config('agents.gemini_api_key')])
+            ->post(
+                'https://generativelanguage.googleapis.com/v1beta/models/'.config('agents.gemini_image_model').':generateContent',
+                [
+                    'contents' => [['role' => 'user', 'parts' => [['text' => $prompt]]]],
+                    'generationConfig' => ['responseModalities' => ['TEXT', 'IMAGE']],
+                ]
+            );
+
+        if ($response->failed()) {
+            throw new RuntimeException("Gemini image generation failed: {$response->body()}");
+        }
+
+        $parts = $response->json('candidates.0.content.parts', []);
+
+        $imageData = collect($parts)->pluck('inlineData.data')->filter()->first();
+
+        if (! $imageData) {
+            throw new RuntimeException('Gemini response contained no image data.');
+        }
+
+        return $imageData;
+    }
+
+    /**
      * @param  array<int, array<string, mixed>>  $messages
      * @return array{0: ?array<string, mixed>, 1: array<int, array<string, mixed>>}
      */

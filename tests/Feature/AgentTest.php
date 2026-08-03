@@ -414,6 +414,73 @@ class AgentTest extends TestCase
         CurrentOrganization::clear();
     }
 
+    public function test_generate_image_tool_uses_gemini_when_that_is_the_chat_provider_and_fal_is_not_configured(): void
+    {
+        config(['services.fal.key' => null, 'agents.chat_provider' => 'gemini', 'agents.gemini_api_key' => 'test-gemini-key']);
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::response([
+                'candidates' => [[
+                    'content' => [
+                        'parts' => [
+                            ['inlineData' => ['mimeType' => 'image/png', 'data' => base64_encode('fake-png-bytes')]],
+                        ],
+                    ],
+                ]],
+            ], 200),
+        ]);
+
+        $user = User::factory()->withPersonalTeam()->create();
+        $organization = $user->currentTeam;
+        CurrentOrganization::set($organization);
+
+        $result = app(GenerateImageTool::class)->handle(['prompt' => 'a red bicycle'], $organization->fresh(), $user);
+
+        $this->assertArrayHasKey('media_id', $result);
+        $this->assertNotNull($organization->fresh()->getMedia('library')->firstWhere('id', $result['media_id']));
+
+        Http::assertSent(fn ($request) => str($request->url())->contains('gemini-2.5-flash-image')
+            && $request->hasHeader('x-goog-api-key', 'test-gemini-key'));
+
+        CurrentOrganization::clear();
+    }
+
+    /**
+     * Exercises GeminiService directly rather than through GenerateImageTool
+     * (same reasoning as the FalService test below it) - confirms the
+     * request shape (image-capable model, responseModalities) and that the
+     * inlineData part's base64 payload is extracted correctly.
+     */
+    public function test_gemini_service_generates_an_image_via_http(): void
+    {
+        config(['agents.gemini_api_key' => 'test-gemini-key']);
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::response([
+                'candidates' => [[
+                    'content' => [
+                        'parts' => [
+                            ['text' => "Here's your image:"],
+                            ['inlineData' => ['mimeType' => 'image/png', 'data' => base64_encode('fake-png-bytes')]],
+                        ],
+                    ],
+                ]],
+            ], 200),
+        ]);
+
+        $imageData = app(GeminiService::class)->generateImage('a red bicycle');
+
+        $this->assertSame(base64_encode('fake-png-bytes'), $imageData);
+
+        Http::assertSent(function ($request) {
+            $body = $request->data();
+
+            return str($request->url())->contains('gemini-2.5-flash-image')
+                && $body['contents'][0]['parts'][0]['text'] === 'a red bicycle'
+                && $body['generationConfig']['responseModalities'] === ['TEXT', 'IMAGE'];
+        });
+    }
+
     /**
      * Exercises FalService directly rather than through GenerateImageTool -
      * the tool's FAL branch calls addMediaFromUrl(), which downloads via
