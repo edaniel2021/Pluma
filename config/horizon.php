@@ -226,6 +226,16 @@ return [
                 'maxProcesses' => 3,
             ],
         ],
+
+        // Fallback for any environment name with no entry above (staging,
+        // qa, etc.) - without this, an unmatched APP_ENV configures zero
+        // supervisors: Horizon's master process starts fine, but nothing
+        // actually consumes the queue, so jobs pile up as Pending forever.
+        '*' => [
+            'supervisor-1' => [
+                'maxProcesses' => 3,
+            ],
+        ],
     ],
 
     /*
