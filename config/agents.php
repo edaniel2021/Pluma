@@ -15,9 +15,22 @@ return [
         SchedulePostTool::class,
     ],
 
+    // Which provider backs the tool-calling chat loop - 'openai' or
+    // 'gemini' (see AppServiceProvider::register(), which binds
+    // ChatCompletionContract to the matching service). Independent of
+    // image generation below, which is still FAL/OpenAI-Images only.
+    'chat_provider' => env('AI_CHAT_PROVIDER', 'openai'),
+
     // Chat model used for the tool-calling conversation loop - see
     // App\Domain\Agents\Support\AgentConversationService.
     'model' => env('OPENAI_AGENT_MODEL', 'gpt-4o-mini'),
+
+    // Gemini equivalents of the above two - only used when chat_provider
+    // is 'gemini'. Model IDs use Google's own naming (not date-versioned
+    // like LinkedIn's API), so this doesn't have the same "current month
+    // isn't active yet" trap LinkedInProvider hit.
+    'gemini_model' => env('GEMINI_AGENT_MODEL', 'gemini-3.6-flash'),
+    'gemini_api_key' => env('GEMINI_API_KEY'),
 
     // Image-generation model used when FAL_KEY isn't set (GenerateImageTool
     // falls back to OpenAI's Images API in that case).

@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Domain\Agents\Contracts\ChatCompletionContract;
+use App\Domain\Agents\Support\GeminiService;
+use App\Domain\Agents\Support\OpenAiService;
 use App\Domain\Organization\Models\Organization;
 use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -22,7 +25,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // AgentConversationService's chat-provider swap point - see
+        // config('agents.chat_provider').
+        $this->app->bind(ChatCompletionContract::class, fn () => match (config('agents.chat_provider')) {
+            'gemini' => new GeminiService,
+            default => new OpenAiService,
+        });
     }
 
     /**

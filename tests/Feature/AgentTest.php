@@ -7,6 +7,7 @@ use App\Domain\Agents\Jobs\ProcessAgentMessageJob;
 use App\Domain\Agents\Models\AgentThread;
 use App\Domain\Agents\Support\AgentConversationService;
 use App\Domain\Agents\Support\FalService;
+use App\Domain\Agents\Support\GeminiService;
 use App\Domain\Agents\Tools\GenerateImageTool;
 use App\Domain\Agents\Tools\ListIntegrationsTool;
 use App\Domain\Agents\Tools\SchedulePostTool;
@@ -146,6 +147,120 @@ class AgentTest extends TestCase
         $this->assertSame('You have one channel connected.', $finalReply->content);
 
         OpenAI::assertSent(\OpenAI\Resources\Chat::class, 2);
+
+        CurrentOrganization::clear();
+    }
+
+    public function test_gemini_service_translates_messages_and_tools_and_parses_the_response(): void
+    {
+        config(['agents.gemini_api_key' => 'test-gemini-key']);
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::response([
+                'candidates' => [[
+                    'content' => [
+                        'parts' => [
+                            ['text' => 'Here is your answer.'],
+                            ['functionCall' => ['id' => 'call_1', 'name' => 'list_channels', 'args' => ['foo' => 'bar']]],
+                        ],
+                    ],
+                ]],
+            ], 200),
+        ]);
+
+        $messages = [
+            ['role' => 'system', 'content' => 'You are a helpful assistant.'],
+            ['role' => 'user', 'content' => 'What channels do I have?'],
+            [
+                'role' => 'assistant',
+                'content' => null,
+                'tool_calls' => [[
+                    'id' => 'call_0',
+                    'type' => 'function',
+                    'function' => ['name' => 'list_channels', 'arguments' => '{}'],
+                ]],
+            ],
+            [
+                'role' => 'tool',
+                'tool_call_id' => 'call_0',
+                'tool_name' => 'list_channels',
+                'content' => '{"channels":[]}',
+            ],
+        ];
+
+        $tools = [[
+            'type' => 'function',
+            'function' => [
+                'name' => 'list_channels',
+                'description' => 'Lists channels',
+                'parameters' => ['type' => 'object', 'properties' => []],
+            ],
+        ]];
+
+        $result = app(GeminiService::class)->chat($messages, $tools);
+
+        $this->assertSame('Here is your answer.', $result->content);
+        $this->assertCount(1, $result->toolCalls);
+        $this->assertSame('call_1', $result->toolCalls[0]->id);
+        $this->assertSame('list_channels', $result->toolCalls[0]->name);
+        $this->assertSame(['foo' => 'bar'], json_decode($result->toolCalls[0]->argumentsJson, true));
+
+        Http::assertSent(function ($request) {
+            $body = $request->data();
+
+            return $request->hasHeader('x-goog-api-key', 'test-gemini-key')
+                && $body['systemInstruction']['parts'][0]['text'] === 'You are a helpful assistant.'
+                && $body['contents'][0] === ['role' => 'user', 'parts' => [['text' => 'What channels do I have?']]]
+                && $body['contents'][1]['role'] === 'model'
+                && $body['contents'][1]['parts'][0]['functionCall']['name'] === 'list_channels'
+                && $body['contents'][2]['role'] === 'user'
+                && $body['contents'][2]['parts'][0]['functionResponse']['name'] === 'list_channels'
+                && $body['contents'][2]['parts'][0]['functionResponse']['id'] === 'call_0'
+                && $body['tools'][0]['functionDeclarations'][0]['name'] === 'list_channels';
+        });
+    }
+
+    public function test_the_conversation_service_uses_gemini_when_configured(): void
+    {
+        config(['agents.chat_provider' => 'gemini', 'agents.gemini_api_key' => 'test-gemini-key']);
+
+        Http::fake([
+            'generativelanguage.googleapis.com/*' => Http::sequence()
+                ->push([
+                    'candidates' => [[
+                        'content' => [
+                            'parts' => [
+                                ['functionCall' => ['id' => 'call_1', 'name' => 'list_channels', 'args' => []]],
+                            ],
+                        ],
+                    ]],
+                ], 200)
+                ->push([
+                    'candidates' => [[
+                        'content' => ['parts' => [['text' => 'You have one channel connected.']]],
+                    ]],
+                ], 200),
+        ]);
+
+        $user = User::factory()->withPersonalTeam()->create();
+        $organization = $user->currentTeam;
+        CurrentOrganization::set($organization);
+        Integration::factory()->create(['organization_id' => $organization->id]);
+        $thread = $organization->agentThreads()->create(['user_id' => $user->id]);
+        $thread->messages()->create(['role' => AgentMessageRole::User, 'content' => 'What channels do I have?']);
+
+        app(AgentConversationService::class)->respond($thread);
+
+        $messages = $thread->messages()->orderBy('id')->get();
+
+        $toolMessage = $messages->firstWhere('role', AgentMessageRole::Tool);
+        $this->assertNotNull($toolMessage);
+        $this->assertSame('list_channels', $toolMessage->tool_name);
+        $this->assertSame('call_1', $toolMessage->tool_call_id);
+
+        $finalReply = $messages->last();
+        $this->assertSame(AgentMessageRole::Assistant, $finalReply->role);
+        $this->assertSame('You have one channel connected.', $finalReply->content);
 
         CurrentOrganization::clear();
     }

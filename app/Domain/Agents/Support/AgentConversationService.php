@@ -3,6 +3,7 @@
 namespace App\Domain\Agents\Support;
 
 use App\Domain\Agents\Contracts\AgentToolContract;
+use App\Domain\Agents\Contracts\ChatCompletionContract;
 use App\Domain\Agents\Enums\AgentMessageRole;
 use App\Domain\Agents\Models\AgentMessage;
 use App\Domain\Agents\Models\AgentThread;
@@ -13,10 +14,12 @@ use Throwable;
 
 /**
  * Runs the tool-calling loop for one turn of a thread: build the message
- * history + system prompt, ask OpenAI, execute any requested tool calls,
- * feed the results back, and repeat until the model replies with plain
- * text (or the iteration cap is hit). Every step is persisted as an
- * AgentMessage so the thread can be replayed/resumed exactly as sent.
+ * history + system prompt, ask the configured chat provider (see
+ * ChatCompletionContract - OpenAI or Gemini, config('agents.chat_provider')),
+ * execute any requested tool calls, feed the results back, and repeat until
+ * the model replies with plain text (or the iteration cap is hit). Every
+ * step is persisted as an AgentMessage so the thread can be replayed/
+ * resumed exactly as sent.
  *
  * This is the hand-rolled equivalent of Postiz's Mastra agent + tool
  * loader - no PHP framework fills that role, so this is pragmatic custom
@@ -24,7 +27,7 @@ use Throwable;
  */
 class AgentConversationService
 {
-    public function __construct(private readonly OpenAiService $openAi) {}
+    public function __construct(private readonly ChatCompletionContract $chatCompletions) {}
 
     public function respond(AgentThread $thread): void
     {
@@ -33,15 +36,15 @@ class AgentConversationService
         $tools = $this->toolDefinitions();
 
         for ($i = 0; $i < config('agents.max_tool_iterations'); $i++) {
-            $message = $this->openAi->chat(
+            $result = $this->chatCompletions->chat(
                 $this->buildMessages($thread, $organization),
                 $tools,
-            )->choices[0]->message;
+            );
 
-            if ($message->toolCalls === []) {
+            if ($result->toolCalls === []) {
                 $thread->messages()->create([
                     'role' => AgentMessageRole::Assistant,
-                    'content' => $message->content,
+                    'content' => $result->content,
                 ]);
 
                 return;
@@ -49,24 +52,24 @@ class AgentConversationService
 
             $thread->messages()->create([
                 'role' => AgentMessageRole::Assistant,
-                'content' => $message->content,
-                'tool_calls' => array_map(fn ($call) => [
+                'content' => $result->content,
+                'tool_calls' => array_map(fn (ChatToolCall $call) => [
                     'id' => $call->id,
                     'type' => 'function',
                     'function' => [
-                        'name' => $call->function->name,
-                        'arguments' => $call->function->arguments,
+                        'name' => $call->name,
+                        'arguments' => $call->argumentsJson,
                     ],
-                ], $message->toolCalls),
+                ], $result->toolCalls),
             ]);
 
-            foreach ($message->toolCalls as $call) {
+            foreach ($result->toolCalls as $call) {
                 $thread->messages()->create([
                     'role' => AgentMessageRole::Tool,
-                    'tool_name' => $call->function->name,
+                    'tool_name' => $call->name,
                     'tool_call_id' => $call->id,
                     'content' => json_encode(
-                        $this->executeTool($call->function->name, $call->function->arguments, $organization, $user)
+                        $this->executeTool($call->name, $call->argumentsJson, $organization, $user)
                     ),
                 ]);
             }
@@ -152,6 +155,10 @@ class AgentConversationService
             AgentMessageRole::Tool => [
                 'role' => 'tool',
                 'tool_call_id' => $message->tool_call_id,
+                // Not part of OpenAI's own 'tool' message shape (OpenAiService
+                // strips it before sending) - only Gemini's translation needs
+                // the function name for its functionResponse part.
+                'tool_name' => $message->tool_name,
                 'content' => $message->content,
             ],
         };
