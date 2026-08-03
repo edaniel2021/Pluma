@@ -122,6 +122,13 @@ class AgentConversationService
         return collect(config('agents.tools'))
             ->map(fn (string $class) => App::make($class))
             ->reject(fn (AgentToolContract $tool) => $alreadyListedChannels && $tool->name() === 'list_channels')
+            // reject() preserves original keys - rejecting the first tool
+            // leaves the rest keyed at 1, 2, ... instead of 0, 1, ..., and
+            // json_encode() treats a non-sequential-from-zero array as a
+            // JSON object, not an array. Without this, the API rejects the
+            // whole request: "Invalid type for 'tools': expected an array
+            // of objects, but got an object instead."
+            ->values()
             ->map(fn (AgentToolContract $tool) => [
                 'type' => 'function',
                 'function' => [

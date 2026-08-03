@@ -213,6 +213,16 @@ class AgentTest extends TestCase
         $this->assertContains('generate_image', $toolNames);
         $this->assertContains('schedule_post', $toolNames);
 
+        // Regression: reject() preserves original array keys, so removing
+        // the first tool left the rest keyed at 1, 2, ... instead of
+        // 0, 1, ... - json_encode() treats a non-sequential-from-zero array
+        // as a JSON object, not an array, and the real API rejected the
+        // whole request over it ("Invalid type for 'tools': expected an
+        // array of objects, but got an object instead"). Checking tool
+        // names alone (above) doesn't catch this - array_is_list() is the
+        // actual property that matters here.
+        $this->assertTrue(array_is_list($tools));
+
         CurrentOrganization::clear();
     }
 
