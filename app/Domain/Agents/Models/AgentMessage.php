@@ -32,7 +32,19 @@ class AgentMessage extends Model
 
     protected static function booted(): void
     {
-        static::created(fn (AgentMessage $message) => AgentMessageCreated::dispatch($message));
+        static::created(function (AgentMessage $message) {
+            // ShouldBroadcastNow means this happens synchronously, inline
+            // with whatever created the message (a web request or
+            // ProcessAgentMessageJob) - a Reverb outage/misconfiguration
+            // must not be able to take that down too. Caught broadly
+            // (not just BroadcastException) since a config problem can
+            // throw before the broadcast attempt even starts.
+            try {
+                AgentMessageCreated::dispatch($message);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
     }
 
     public function thread(): BelongsTo

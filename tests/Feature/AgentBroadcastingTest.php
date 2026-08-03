@@ -24,6 +24,39 @@ class AgentBroadcastingTest extends TestCase
         Event::assertDispatched(AgentMessageCreated::class, fn ($event) => $event->message->is($message));
     }
 
+    /**
+     * Regression test for a real staging incident: blank REVERB_APP_ID/KEY/
+     * SECRET made every broadcast attempt hang for 30s then throw, which -
+     * since AgentMessageCreated is ShouldBroadcastNow, fired synchronously
+     * from AgentMessage::booted() - took the entire "send message" request
+     * down with it (including aborting ProcessAgentMessageJob::dispatch(),
+     * which runs after message creation in SendAgentMessage). Points at a
+     * real but unreachable-fast address (not NullBroadcaster, which never
+     * throws) so the broadcast attempt genuinely fails, proving
+     * AgentMessage::booted()'s try/catch actually holds.
+     */
+    public function test_a_broadcast_failure_does_not_prevent_message_creation(): void
+    {
+        config([
+            'broadcasting.default' => 'reverb',
+            'broadcasting.connections.reverb.key' => 'test-key',
+            'broadcasting.connections.reverb.secret' => 'test-secret',
+            'broadcasting.connections.reverb.app_id' => 'test-app',
+            'broadcasting.connections.reverb.options.host' => '127.0.0.1',
+            'broadcasting.connections.reverb.options.port' => 1,
+            'broadcasting.connections.reverb.options.scheme' => 'http',
+            'broadcasting.connections.reverb.options.useTLS' => false,
+            'broadcasting.connections.reverb.client_options.timeout' => 2,
+        ]);
+
+        $user = User::factory()->withPersonalTeam()->create();
+        $thread = $user->currentTeam->agentThreads()->create(['user_id' => $user->id]);
+
+        $message = $thread->messages()->create(['role' => AgentMessageRole::User, 'content' => 'hi']);
+
+        $this->assertDatabaseHas('agent_messages', ['id' => $message->id, 'content' => 'hi']);
+    }
+
     public function test_the_broadcast_event_targets_the_threads_own_private_channel(): void
     {
         $user = User::factory()->withPersonalTeam()->create();
