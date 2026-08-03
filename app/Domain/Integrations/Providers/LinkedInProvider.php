@@ -53,7 +53,14 @@ class LinkedInProvider extends AbstractSocialProvider
     {
         $response = $this->request($integration)
             ->withHeaders([
-                'LinkedIn-Version' => now()->format('Ym'),
+                // Not the current calendar month - LinkedIn ships a new
+                // version monthly but doesn't activate it on day 1 of that
+                // month (confirmed live: on 2026-08-03, "202608" 426'd with
+                // NONEXISTENT_VERSION while 202607 was still the latest
+                // active version). One month behind is always safely
+                // within the ~12-month support window and past any
+                // rollout lag.
+                'LinkedIn-Version' => now()->subMonth()->format('Ym'),
                 'X-Restli-Protocol-Version' => '2.0.0',
             ])
             ->post('https://api.linkedin.com/rest/posts', [
