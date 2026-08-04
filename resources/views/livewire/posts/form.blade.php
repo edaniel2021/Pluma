@@ -9,6 +9,14 @@
         </x-slot>
 
         <x-slot name="form">
+            @if ($this->existingMedia)
+                <div class="col-span-6">
+                    <x-label value="{{ __('Attached Image') }}" />
+                    <img src="{{ $this->existingMedia->getUrl() }}" alt="{{ __('Attached image') }}"
+                         class="mt-1 rounded-lg border border-gray-200 max-w-xs">
+                </div>
+            @endif
+
             <div class="col-span-6">
                 <x-label for="content" value="{{ __('Content') }}" />
                 <textarea id="content" wire:model="content" rows="6"

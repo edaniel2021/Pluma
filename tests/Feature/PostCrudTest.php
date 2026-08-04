@@ -47,6 +47,39 @@ class PostCrudTest extends TestCase
         $this->assertSame('Updated content', $post->fresh()->content);
     }
 
+    /**
+     * Real production complaint: "when I navigate to posts > edit post, I
+     * don't see the image" - this plain CRUD form had no code at all to
+     * render an attached image (it predates media attachment support,
+     * which only ever got built into the Launches Composer). A post
+     * scheduled with an image via the AI assistant showed nothing here,
+     * silently.
+     */
+    public function test_editing_a_post_shows_its_attached_image(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $this->actingAs($user);
+
+        $post = Post::factory()->create();
+        $post->addMediaFromBase64(base64_encode('fake-png-bytes'))
+            ->usingName('a wheelchair')
+            ->toMediaCollection('default');
+
+        Livewire::actingAs($user)->test(Form::class, ['post' => $post->fresh()])
+            ->assertSee($post->fresh()->getFirstMedia('default')->getUrl(), false);
+    }
+
+    public function test_editing_a_post_with_no_image_shows_no_preview(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $this->actingAs($user);
+
+        $post = Post::factory()->create();
+
+        Livewire::actingAs($user)->test(Form::class, ['post' => $post])
+            ->assertDontSee('<img', false);
+    }
+
     public function test_a_post_can_be_deleted(): void
     {
         $user = User::factory()->withPersonalTeam()->create();

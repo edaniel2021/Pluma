@@ -8,6 +8,7 @@ use App\Domain\Posts\Enums\PostState;
 use App\Domain\Posts\Models\Post;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class Form extends Component
 {
@@ -60,6 +61,18 @@ class Form extends Component
     public function getStatesProperty(): array
     {
         return PostState::cases();
+    }
+
+    /**
+     * Read-only preview only - this plain CRUD form (unlike the
+     * integration-aware Launches Composer) has no upload/crop UI of its
+     * own. Posts with an attached image (e.g. scheduled via the AI
+     * assistant, or via the Composer) previously showed nothing at all
+     * here, silently - a real complaint ("I don't see the image").
+     */
+    public function getExistingMediaProperty(): ?Media
+    {
+        return $this->post?->getFirstMedia('default');
     }
 
     public function render()
