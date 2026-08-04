@@ -1,7 +1,6 @@
 <?php
 
 use App\Domain\Agents\Tools\GenerateImageTool;
-use App\Domain\Agents\Tools\ListIntegrationsTool;
 use App\Domain\Agents\Tools\SchedulePostTool;
 
 return [
@@ -9,8 +8,13 @@ return [
     // Registered tools available to the conversation loop - the extensibility
     // point for adding more (e.g. analytics, WhatsApp broadcasts) later,
     // mirroring config/social-providers.php's registry pattern.
+    //
+    // No list_channels tool here - AgentConversationService::systemPrompt()
+    // inlines the connected-channels list directly instead, since it's a
+    // cheap read-only lookup and offering it as a tool cost a full extra
+    // model round trip on nearly every scheduling turn just to fetch data
+    // that's already known before the model says anything at all.
     'tools' => [
-        ListIntegrationsTool::class,
         GenerateImageTool::class,
         SchedulePostTool::class,
     ],
@@ -48,6 +52,13 @@ return [
     // on 2026-05-12. gpt-image-1 is the successor and has a different
     // request shape (see OpenAiService::generateImage()'s comment).
     'openai_image_model' => env('OPENAI_IMAGE_MODEL', 'gpt-image-1'),
+
+    // gpt-image-1 has no separate "speed" setting, but lower quality tiers
+    // render meaningfully faster - trading some visual fidelity for
+    // latency. Valid values: low | medium | high | auto. 'auto' lets
+    // OpenAI pick per-prompt, which in practice leans toward slower/higher
+    // renders than this agent's social-post images need.
+    'openai_image_quality' => env('OPENAI_IMAGE_QUALITY', 'medium'),
 
     // FAL.ai model path (appended to https://fal.run/) used for image
     // generation when FAL_KEY is configured.

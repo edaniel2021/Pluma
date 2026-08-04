@@ -8,8 +8,8 @@ use App\Domain\Agents\Models\AgentThread;
 use App\Domain\Agents\Support\AgentConversationService;
 use App\Domain\Agents\Support\FalService;
 use App\Domain\Agents\Support\GeminiService;
+use App\Domain\Agents\Support\OpenAiService;
 use App\Domain\Agents\Tools\GenerateImageTool;
-use App\Domain\Agents\Tools\ListIntegrationsTool;
 use App\Domain\Agents\Tools\SchedulePostTool;
 use App\Domain\Integrations\Models\Integration;
 use App\Domain\Organization\Support\CurrentOrganization;
@@ -190,6 +190,8 @@ class AgentTest extends TestCase
 
     public function test_the_conversation_service_executes_a_tool_call_before_replying(): void
     {
+        config(['services.fal.key' => null]);
+
         OpenAI::fake([
             CreateResponse::fake([
                 'choices' => [[
@@ -198,14 +200,17 @@ class AgentTest extends TestCase
                         'tool_calls' => [[
                             'id' => 'call_1',
                             'type' => 'function',
-                            'function' => ['name' => 'list_channels', 'arguments' => '{}'],
+                            'function' => ['name' => 'generate_image', 'arguments' => '{"prompt":"a red bicycle"}'],
                         ]],
                     ],
                 ]],
             ]),
+            \OpenAI\Responses\Images\CreateResponse::fake([
+                'data' => [['b64_json' => base64_encode('fake-png-bytes')]],
+            ]),
             CreateResponse::fake([
                 'choices' => [[
-                    'message' => ['content' => 'You have one channel connected.'],
+                    'message' => ['content' => "I've generated the image."],
                 ]],
             ]),
         ]);
@@ -213,9 +218,8 @@ class AgentTest extends TestCase
         $user = User::factory()->withPersonalTeam()->create();
         $organization = $user->currentTeam;
         CurrentOrganization::set($organization);
-        Integration::factory()->create(['organization_id' => $organization->id]);
         $thread = $organization->agentThreads()->create(['user_id' => $user->id]);
-        $thread->messages()->create(['role' => AgentMessageRole::User, 'content' => 'What channels do I have?']);
+        $thread->messages()->create(['role' => AgentMessageRole::User, 'content' => 'Generate a red bicycle image']);
 
         app(AgentConversationService::class)->respond($thread);
 
@@ -223,13 +227,13 @@ class AgentTest extends TestCase
 
         $toolMessage = $messages->firstWhere('role', AgentMessageRole::Tool);
         $this->assertNotNull($toolMessage);
-        $this->assertSame('list_channels', $toolMessage->tool_name);
+        $this->assertSame('generate_image', $toolMessage->tool_name);
         $this->assertSame('call_1', $toolMessage->tool_call_id);
-        $this->assertStringContainsString('"channels"', $toolMessage->content);
+        $this->assertStringContainsString('"media_id"', $toolMessage->content);
 
         $finalReply = $messages->last();
         $this->assertSame(AgentMessageRole::Assistant, $finalReply->role);
-        $this->assertSame('You have one channel connected.', $finalReply->content);
+        $this->assertSame("I've generated the image.", $finalReply->content);
 
         OpenAI::assertSent(\OpenAI\Resources\Chat::class, 2);
 
@@ -275,40 +279,25 @@ class AgentTest extends TestCase
         CurrentOrganization::clear();
     }
 
-    public function test_tool_definitions_stop_offering_list_channels_once_it_has_already_succeeded(): void
+    /**
+     * list_channels used to be a registered tool with its own
+     * exclude-once-called logic (a real reject()-preserves-keys bug lived
+     * here - see git history) - it's gone now, replaced by inlining the
+     * channel list directly into the system prompt (see systemPrompt()),
+     * which saves a full extra model round trip on every scheduling turn.
+     * This just confirms toolDefinitions() still returns the two remaining
+     * tools as a proper JSON array (not an object - array_is_list() is the
+     * property that actually matters for the API request shape).
+     */
+    public function test_tool_definitions_returns_the_registered_tools_as_a_json_array(): void
     {
-        $user = User::factory()->withPersonalTeam()->create();
-        $organization = $user->currentTeam;
-        CurrentOrganization::set($organization);
-        $thread = $organization->agentThreads()->create(['user_id' => $user->id]);
-        $thread->messages()->create(['role' => AgentMessageRole::User, 'content' => 'hi']);
-        $thread->messages()->create([
-            'role' => AgentMessageRole::Tool,
-            'tool_name' => 'list_channels',
-            'tool_call_id' => 'call_1',
-            'content' => '{"channels":[]}',
-        ]);
-
         $method = new \ReflectionMethod(AgentConversationService::class, 'toolDefinitions');
-        $tools = $method->invoke(app(AgentConversationService::class), $thread);
+        $tools = $method->invoke(app(AgentConversationService::class));
 
         $toolNames = collect($tools)->pluck('function.name')->all();
 
-        $this->assertNotContains('list_channels', $toolNames);
-        $this->assertContains('generate_image', $toolNames);
-        $this->assertContains('schedule_post', $toolNames);
-
-        // Regression: reject() preserves original array keys, so removing
-        // the first tool left the rest keyed at 1, 2, ... instead of
-        // 0, 1, ... - json_encode() treats a non-sequential-from-zero array
-        // as a JSON object, not an array, and the real API rejected the
-        // whole request over it ("Invalid type for 'tools': expected an
-        // array of objects, but got an object instead"). Checking tool
-        // names alone (above) doesn't catch this - array_is_list() is the
-        // actual property that matters here.
+        $this->assertSame(['generate_image', 'schedule_post'], $toolNames);
         $this->assertTrue(array_is_list($tools));
-
-        CurrentOrganization::clear();
     }
 
     public function test_gemini_service_translates_messages_and_tools_and_parses_the_response(): void
@@ -494,20 +483,42 @@ class AgentTest extends TestCase
         $this->assertStringContainsString('OpenAI API key is missing.', $reply->content);
     }
 
-    public function test_list_integrations_tool_returns_connected_channels(): void
+    /**
+     * Replaces the old list_channels tool test - channels are no longer
+     * fetched via a tool call at all (see systemPrompt()'s docblock for
+     * why: it cost a full extra model round trip on nearly every
+     * scheduling turn for data that's cheap to know upfront).
+     */
+    public function test_system_prompt_lists_connected_channels_directly(): void
     {
         $user = User::factory()->withPersonalTeam()->create();
         $organization = $user->currentTeam;
         CurrentOrganization::set($organization);
-        Integration::factory()->create(['organization_id' => $organization->id, 'provider' => 'linkedin']);
-        $thread = $organization->agentThreads()->create(['user_id' => $user->id]);
+        Integration::factory()->create([
+            'organization_id' => $organization->id,
+            'provider' => 'linkedin',
+            'account_name' => 'Ebenezer Daniel',
+        ]);
 
-        $result = app(ListIntegrationsTool::class)->handle([], $organization->fresh(), $user, $thread);
+        $method = new \ReflectionMethod(AgentConversationService::class, 'systemPrompt');
+        $prompt = $method->invoke(app(AgentConversationService::class), $organization->fresh());
 
-        $this->assertCount(1, $result['channels']);
-        $this->assertSame('linkedin', $result['channels'][0]['platform']);
+        $this->assertStringContainsString('linkedin', $prompt);
+        $this->assertStringContainsString('Ebenezer Daniel', $prompt);
 
         CurrentOrganization::clear();
+    }
+
+    public function test_system_prompt_tells_the_model_when_no_channels_are_connected(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $organization = $user->currentTeam;
+        CurrentOrganization::set($organization);
+
+        $method = new \ReflectionMethod(AgentConversationService::class, 'systemPrompt');
+        $prompt = $method->invoke(app(AgentConversationService::class), $organization->fresh());
+
+        $this->assertStringContainsString('No channels are connected yet', $prompt);
     }
 
     public function test_schedule_post_tool_creates_a_draft_post(): void
@@ -651,6 +662,30 @@ class AgentTest extends TestCase
         $this->assertNotNull($organization->fresh()->getMedia('library')->firstWhere('id', $result['media_id']));
 
         CurrentOrganization::clear();
+    }
+
+    /**
+     * Speed improvement, not a bug fix: gpt-image-1 has no separate "fast"
+     * mode, but the API's own quality tiers render meaningfully faster at
+     * lower settings. Without an explicit quality param the request would
+     * fall back to whatever OpenAI's own default is, which in practice
+     * leans slower than a social-post image needs.
+     */
+    public function test_openai_service_requests_the_configured_image_quality(): void
+    {
+        config(['agents.openai_image_quality' => 'medium']);
+
+        OpenAI::fake([
+            \OpenAI\Responses\Images\CreateResponse::fake([
+                'data' => [['b64_json' => base64_encode('fake-png-bytes')]],
+            ]),
+        ]);
+
+        app(OpenAiService::class)->generateImage('a red bicycle');
+
+        OpenAI::assertSent(\OpenAI\Resources\Images::class, function (string $method, array $parameters) {
+            return $method === 'create' && $parameters['quality'] === 'medium';
+        });
     }
 
     /**

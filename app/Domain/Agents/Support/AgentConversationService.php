@@ -7,6 +7,7 @@ use App\Domain\Agents\Contracts\ChatCompletionContract;
 use App\Domain\Agents\Enums\AgentMessageRole;
 use App\Domain\Agents\Models\AgentMessage;
 use App\Domain\Agents\Models\AgentThread;
+use App\Domain\Integrations\Models\Integration;
 use App\Domain\Organization\Models\Organization;
 use App\Models\User;
 use Illuminate\Support\Facades\App;
@@ -37,7 +38,7 @@ class AgentConversationService
         for ($i = 0; $i < config('agents.max_tool_iterations'); $i++) {
             $result = $this->chatCompletions->chat(
                 $this->buildMessages($thread, $organization),
-                $this->toolDefinitions($thread),
+                $this->toolDefinitions(),
             );
 
             if ($result->toolCalls === []) {
@@ -108,27 +109,10 @@ class AgentConversationService
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function toolDefinitions(AgentThread $thread): array
+    private function toolDefinitions(): array
     {
-        // Belt-and-suspenders on top of buildMessages()'s fresh query below:
-        // list_channels is a pure lookup, so once it's succeeded earlier in
-        // this thread, stop even offering it rather than relying solely on
-        // the system prompt to stop the model re-calling it.
-        $alreadyListedChannels = $thread->messages()
-            ->where('role', AgentMessageRole::Tool)
-            ->where('tool_name', 'list_channels')
-            ->exists();
-
         return collect(config('agents.tools'))
             ->map(fn (string $class) => App::make($class))
-            ->reject(fn (AgentToolContract $tool) => $alreadyListedChannels && $tool->name() === 'list_channels')
-            // reject() preserves original keys - rejecting the first tool
-            // leaves the rest keyed at 1, 2, ... instead of 0, 1, ..., and
-            // json_encode() treats a non-sequential-from-zero array as a
-            // JSON object, not an array. Without this, the API rejects the
-            // whole request: "Invalid type for 'tools': expected an array
-            // of objects, but got an object instead."
-            ->values()
             ->map(fn (AgentToolContract $tool) => [
                 'type' => 'function',
                 'function' => [
@@ -156,8 +140,10 @@ class AgentConversationService
         // property) - every iteration after the first would otherwise see
         // the exact same stale snapshot from before the loop even started,
         // missing its own prior tool calls entirely. That's what was
-        // actually causing the model to repeat list_channels every
-        // iteration - it never saw evidence it had already been called.
+        // actually causing a real production bug: a tool call the model had
+        // already made (back when a list_channels tool existed) repeating
+        // every iteration, because it never saw evidence it had already
+        // been called.
         foreach ($thread->messages()->orderBy('id')->get() as $message) {
             $messages[] = $this->toWireMessage($message);
         }
@@ -200,11 +186,26 @@ class AgentConversationService
         // scheduled_at expects (see that tool's parameters()).
         $now = now($organization->timezone)->format('l, Y-m-d H:i');
 
+        // Inlined directly rather than exposed as a list_channels tool the
+        // model has to call: it's a cheap, read-only, org-scoped lookup
+        // that's needed at the start of nearly every scheduling turn, and
+        // a tool call costs a full extra model round trip (decide to call
+        // it -> tool runs -> decide what to do with the result) purely to
+        // fetch data that's already known before the model says anything at
+        // all. Real production impact: this was a large, avoidable chunk of
+        // response latency on essentially every "schedule a post" turn.
+        $channels = $organization->integrations->isEmpty()
+            ? 'No channels are connected yet - tell the user to connect one first.'
+            : $organization->integrations
+                ->map(fn (Integration $integration) => "- id {$integration->id}: {$integration->provider} ({$integration->account_name})".($integration->isDisabled() ? ' [disabled]' : ''))
+                ->implode("\n        ");
+
         return <<<PROMPT
         You are Pluma's social media assistant for the organization "{$organization->name}".
         The current date and time is {$now} ({$organization->timezone}). Always compute relative times ("today", "tomorrow", "in 2 hours", etc.) from this exact value - never assume or guess the current date.
-        You help the user schedule social media posts, generate images for those posts, and see which channels are connected.
-        - Call list_channels at most once per turn - if you already called it earlier in this same conversation, reuse that result instead of calling it again, even across multiple tool calls in the same turn.
+        The organization's connected channels are:
+        {$channels}
+        You help the user schedule social media posts and generate images for those posts. Use the channel list above directly - do not ask the user for a channel id, and there is no tool to look channels up again.
         - If the user's request needs an image, call generate_image next.
         - Once you have the channel and (if needed) a generated image, reply with plain text restating the channel, content, and (if scheduling) the time, and ask the user to confirm before you call schedule_post. Do not call schedule_post in the same turn you ask for confirmation.
         - When scheduling, give schedule_post's scheduled_at as a plain local date-time in the organization's own timezone ({$organization->timezone}) - e.g. "2026-08-04 15:00". Do not convert it to UTC yourself; the system does that automatically.

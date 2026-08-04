@@ -34,7 +34,7 @@ class SchedulePostTool implements AgentToolContract
             'properties' => [
                 'integration_id' => [
                     'type' => 'integer',
-                    'description' => 'The id of the channel to post to, from list_channels.',
+                    'description' => 'The id of the channel to post to, from the connected channels list in your instructions.',
                 ],
                 'content' => [
                     'type' => 'string',
@@ -63,7 +63,7 @@ class SchedulePostTool implements AgentToolContract
         $integration = $organization->integrations->firstWhere('id', $arguments['integration_id'] ?? null);
 
         if (! $integration) {
-            return ['error' => 'Unknown integration_id - call list_channels first.'];
+            return ['error' => 'Unknown integration_id - it must match one of the organization\'s connected channels.'];
         }
 
         $state = PostState::tryFrom($arguments['state'] ?? '') ?? PostState::Draft;
@@ -119,8 +119,8 @@ class SchedulePostTool implements AgentToolContract
      * symptom was posts scheduled with no image at all, despite the model
      * having just generated one a couple of tool calls earlier in the same
      * turn. Same "don't rely solely on the model correctly threading
-     * context forward" reasoning as toolDefinitions() excluding
-     * list_channels once it's already succeeded.
+     * context forward" reasoning behind inlining the connected-channels
+     * list into the system prompt instead of a tool call.
      */
     private function defaultMediaId(AgentThread $thread): ?int
     {

@@ -151,10 +151,10 @@ class GeminiService implements ChatCompletionContract
                             'name' => $call['function']['name'],
                             // Same (object) cast and same reason as
                             // functionResponse.response above - a
-                            // no-argument tool call (e.g. list_channels())
-                            // decodes its '{}' arguments string to an empty
-                            // PHP array, which json_encode always renders
-                            // as `[]` unless forced back to an object.
+                            // no-argument tool call decodes its '{}'
+                            // arguments string to an empty PHP array, which
+                            // json_encode always renders as `[]` unless
+                            // forced back to an object.
                             'args' => (object) (json_decode($call['function']['arguments'], true) ?? []),
                         ],
                     ], $message['tool_calls']),
