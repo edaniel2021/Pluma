@@ -8,6 +8,7 @@ use App\Domain\Agents\Support\GeminiService;
 use App\Domain\Agents\Support\OpenAiService;
 use App\Domain\Organization\Models\Organization;
 use App\Models\User;
+use Illuminate\Support\Str;
 
 class GenerateImageTool implements AgentToolContract
 {
@@ -59,7 +60,11 @@ class GenerateImageTool implements AgentToolContract
             default => $organization->addMediaFromBase64($this->openAi->generateImage($prompt)),
         };
 
-        $media = $fileAdder->usingName($prompt)->toMediaCollection('library');
+        // Truncated, not the raw prompt: media.name is a varchar(255)
+        // column, but nothing bounds how long a model-generated prompt can
+        // be - a verbose one (models tend to write full descriptive
+        // paragraphs) overflows it and fails the whole insert.
+        $media = $fileAdder->usingName(Str::limit($prompt, 200))->toMediaCollection('library');
 
         return [
             'media_id' => $media->id,

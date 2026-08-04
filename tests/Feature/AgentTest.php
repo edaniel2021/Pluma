@@ -489,6 +489,41 @@ class AgentTest extends TestCase
         CurrentOrganization::clear();
     }
 
+    /**
+     * Regression test for a real staging failure: models tend to write
+     * full descriptive paragraphs as image prompts (not short captions),
+     * and nothing bounded that length before it was used verbatim as
+     * media.name - a varchar(255) column. A ~260-character prompt failed
+     * the whole insert with "value too long for type character
+     * varying(255)".
+     */
+    public function test_generate_image_tool_truncates_a_long_prompt_for_the_media_name(): void
+    {
+        config(['services.fal.key' => null]);
+
+        OpenAI::fake([
+            \OpenAI\Responses\Images\CreateResponse::fake([
+                'data' => [['b64_json' => base64_encode('fake-png-bytes')]],
+            ]),
+        ]);
+
+        $user = User::factory()->withPersonalTeam()->create();
+        $organization = $user->currentTeam;
+        CurrentOrganization::set($organization);
+
+        $longPrompt = str_repeat('a wheelchair with a sleek design and vibrant colors, ', 6);
+        $this->assertGreaterThan(255, strlen($longPrompt));
+
+        $result = app(GenerateImageTool::class)->handle(['prompt' => $longPrompt], $organization->fresh(), $user);
+
+        $this->assertArrayHasKey('media_id', $result);
+        $media = $organization->fresh()->getMedia('library')->firstWhere('id', $result['media_id']);
+        $this->assertNotNull($media);
+        $this->assertLessThanOrEqual(255, strlen($media->name));
+
+        CurrentOrganization::clear();
+    }
+
     public function test_generate_image_tool_uses_gemini_when_that_is_the_chat_provider_and_fal_is_not_configured(): void
     {
         config(['services.fal.key' => null, 'agents.chat_provider' => 'gemini', 'agents.gemini_api_key' => 'test-gemini-key']);
