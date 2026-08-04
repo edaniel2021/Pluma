@@ -81,6 +81,38 @@ class AgentTest extends TestCase
         Queue::assertPushed(ProcessAgentMessageJob::class, fn ($job) => $job->threadId === $thread->id);
     }
 
+    public function test_chat_renders_the_generated_image_inline_when_generate_image_succeeds(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $this->actingAs($user);
+        $thread = $user->currentTeam->agentThreads()->create([]);
+        $thread->messages()->create([
+            'role' => AgentMessageRole::Tool,
+            'tool_name' => 'generate_image',
+            'tool_call_id' => 'call_1',
+            'content' => json_encode(['media_id' => 1, 'url' => 'https://example.com/storage/1/wheelchair.png']),
+        ]);
+
+        Livewire::test(Chat::class, ['thread' => $thread])
+            ->assertSee('https://example.com/storage/1/wheelchair.png', false);
+    }
+
+    public function test_chat_does_not_render_an_image_when_generate_image_fails(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $this->actingAs($user);
+        $thread = $user->currentTeam->agentThreads()->create([]);
+        $thread->messages()->create([
+            'role' => AgentMessageRole::Tool,
+            'tool_name' => 'generate_image',
+            'tool_call_id' => 'call_1',
+            'content' => json_encode(['error' => 'OpenAI API key is missing.']),
+        ]);
+
+        Livewire::test(Chat::class, ['thread' => $thread])
+            ->assertDontSee('<img', false);
+    }
+
     public function test_the_conversation_service_persists_a_plain_assistant_reply(): void
     {
         OpenAI::fake([

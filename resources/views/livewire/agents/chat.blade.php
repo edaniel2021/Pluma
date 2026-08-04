@@ -19,6 +19,15 @@
                         {{ __('Calling tools...') }}
                     </div>
                 </div>
+            @elseif ($message->role === \App\Domain\Agents\Enums\AgentMessageRole::Tool && $message->tool_name === 'generate_image')
+                @php $generatedImage = json_decode($message->content, true) ?? []; @endphp
+                @if (! empty($generatedImage['url']))
+                    <div class="flex justify-start">
+                        <div class="max-w-xs rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+                            <img src="{{ $generatedImage['url'] }}" alt="{{ __('Generated image') }}" class="block w-full h-auto">
+                        </div>
+                    </div>
+                @endif
             @endif
         @empty
             <p class="text-sm text-gray-500 text-center">{{ __('Say hello to get started.') }}</p>
