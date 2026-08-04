@@ -1,3 +1,11 @@
+@php
+    // Shared across the desktop dropdown trigger and the mobile section
+    // below - "Social" should read as active whenever any of its own
+    // sub-pages are, not just when its own (non-existent) index route is.
+    $socialRoutes = ['launches.*', 'posts.*', 'media.*', 'integrations.*', 'whatsapp.*', 'agents.*'];
+    $socialActive = collect($socialRoutes)->contains(fn ($pattern) => request()->routeIs($pattern));
+@endphp
+
 <nav x-data="{ open: false }" class="bg-white border-b border-gray-100">
     <!-- Primary Navigation Menu -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -15,23 +23,55 @@
                     <x-nav-link href="{{ route('dashboard') }}" :active="request()->routeIs('dashboard')">
                         {{ __('Dashboard') }}
                     </x-nav-link>
-                    <x-nav-link href="{{ route('launches.index') }}" :active="request()->routeIs('launches.*')">
-                        {{ __('Launches') }}
+
+                    <!-- Social (Launches, Posts, Media, Integrations, WhatsApp, AI Assistant) -->
+                    <div class="relative flex items-center">
+                        <x-dropdown align="left" width="56">
+                            <x-slot name="trigger">
+                                <button type="button"
+                                        @class([
+                                            'inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium leading-5 focus:outline-none transition duration-150 ease-in-out',
+                                            'border-indigo-400 text-gray-900' => $socialActive,
+                                            'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' => ! $socialActive,
+                                        ])>
+                                    {{ __('Social') }}
+                                    <svg class="ms-1 size-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" />
+                                    </svg>
+                                </button>
+                            </x-slot>
+
+                            <x-slot name="content">
+                                <x-dropdown-link href="{{ route('launches.index') }}">
+                                    {{ __('Launches') }}
+                                </x-dropdown-link>
+                                <x-dropdown-link href="{{ route('posts.index') }}">
+                                    {{ __('Posts') }}
+                                </x-dropdown-link>
+                                <x-dropdown-link href="{{ route('media.index') }}">
+                                    {{ __('Media') }}
+                                </x-dropdown-link>
+                                <x-dropdown-link href="{{ route('integrations.index') }}">
+                                    {{ __('Integrations') }}
+                                </x-dropdown-link>
+                                <x-dropdown-link href="{{ route('whatsapp.index') }}">
+                                    {{ __('WhatsApp') }}
+                                </x-dropdown-link>
+                                <x-dropdown-link href="{{ route('agents.index') }}">
+                                    {{ __('AI Assistant') }}
+                                </x-dropdown-link>
+                            </x-slot>
+                        </x-dropdown>
+                    </div>
+
+                    <x-nav-link href="{{ route('communications.index') }}" :active="request()->routeIs('communications.*')">
+                        {{ __('Communications') }}
                     </x-nav-link>
-                    <x-nav-link href="{{ route('posts.index') }}" :active="request()->routeIs('posts.*')">
-                        {{ __('Posts') }}
+                    <x-nav-link href="{{ route('seo.index') }}" :active="request()->routeIs('seo.*')">
+                        {{ __('SEO') }}
                     </x-nav-link>
-                    <x-nav-link href="{{ route('media.index') }}" :active="request()->routeIs('media.*')">
-                        {{ __('Media') }}
-                    </x-nav-link>
-                    <x-nav-link href="{{ route('integrations.index') }}" :active="request()->routeIs('integrations.*')">
-                        {{ __('Integrations') }}
-                    </x-nav-link>
-                    <x-nav-link href="{{ route('whatsapp.index') }}" :active="request()->routeIs('whatsapp.*')">
-                        {{ __('WhatsApp') }}
-                    </x-nav-link>
-                    <x-nav-link href="{{ route('agents.index') }}" :active="request()->routeIs('agents.*')">
-                        {{ __('AI Assistant') }}
+                    <x-nav-link href="{{ route('analytics.index') }}" :active="request()->routeIs('analytics.*')">
+                        {{ __('Analytics & Reports') }}
                     </x-nav-link>
                     <x-nav-link href="{{ route('developers.index') }}" :active="request()->routeIs('developers.*')">
                         {{ __('Developers') }}
@@ -168,6 +208,10 @@
             <x-responsive-nav-link href="{{ route('dashboard') }}" :active="request()->routeIs('dashboard')">
                 {{ __('Dashboard') }}
             </x-responsive-nav-link>
+
+            <div class="block px-4 pt-2 pb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                {{ __('Social') }}
+            </div>
             <x-responsive-nav-link href="{{ route('launches.index') }}" :active="request()->routeIs('launches.*')">
                 {{ __('Launches') }}
             </x-responsive-nav-link>
@@ -186,14 +230,26 @@
             <x-responsive-nav-link href="{{ route('agents.index') }}" :active="request()->routeIs('agents.*')">
                 {{ __('AI Assistant') }}
             </x-responsive-nav-link>
-            <x-responsive-nav-link href="{{ route('developers.index') }}" :active="request()->routeIs('developers.*')">
-                {{ __('Developers') }}
-            </x-responsive-nav-link>
-            @can('access-admin-panel')
-                <x-responsive-nav-link href="{{ route('admin.stats') }}" :active="request()->routeIs('admin.*')">
-                    {{ __('Admin') }}
+
+            <div class="border-t border-gray-200 mt-2 pt-2">
+                <x-responsive-nav-link href="{{ route('communications.index') }}" :active="request()->routeIs('communications.*')">
+                    {{ __('Communications') }}
                 </x-responsive-nav-link>
-            @endcan
+                <x-responsive-nav-link href="{{ route('seo.index') }}" :active="request()->routeIs('seo.*')">
+                    {{ __('SEO') }}
+                </x-responsive-nav-link>
+                <x-responsive-nav-link href="{{ route('analytics.index') }}" :active="request()->routeIs('analytics.*')">
+                    {{ __('Analytics & Reports') }}
+                </x-responsive-nav-link>
+                <x-responsive-nav-link href="{{ route('developers.index') }}" :active="request()->routeIs('developers.*')">
+                    {{ __('Developers') }}
+                </x-responsive-nav-link>
+                @can('access-admin-panel')
+                    <x-responsive-nav-link href="{{ route('admin.stats') }}" :active="request()->routeIs('admin.*')">
+                        {{ __('Admin') }}
+                    </x-responsive-nav-link>
+                @endcan
+            </div>
         </div>
 
         <!-- Responsive Settings Options -->

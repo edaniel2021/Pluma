@@ -96,6 +96,21 @@ Route::middleware([
         return view('developers.index');
     })->name('developers.index');
 
+    // Communications, SEO, and Analytics & Reports are future phases (see
+    // CLAUDE.md's phased build order) - these are placeholder landing pages
+    // only, so the nav category isn't a dead link before each phase ships.
+    Route::get('/communications', function () {
+        return view('communications.index');
+    })->name('communications.index');
+
+    Route::get('/seo', function () {
+        return view('seo.index');
+    })->name('seo.index');
+
+    Route::get('/analytics', function () {
+        return view('analytics.index');
+    })->name('analytics.index');
+
     // Platform-wide, not organization-scoped - see the is_platform_admin
     // migration docblock for why this is a separate gate from the per-org
     // superadmin/admin/user roles.
