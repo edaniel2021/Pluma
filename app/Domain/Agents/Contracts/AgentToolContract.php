@@ -2,6 +2,7 @@
 
 namespace App\Domain\Agents\Contracts;
 
+use App\Domain\Agents\Models\AgentThread;
 use App\Domain\Organization\Models\Organization;
 use App\Models\User;
 
@@ -32,5 +33,5 @@ interface AgentToolContract
      * @param  array<string, mixed>  $arguments  Decoded from the model's tool call.
      * @return array<string, mixed> JSON-serializable result fed back to the model.
      */
-    public function handle(array $arguments, Organization $organization, User $user): array;
+    public function handle(array $arguments, Organization $organization, User $user, AgentThread $thread): array;
 }

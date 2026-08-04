@@ -68,7 +68,7 @@ class AgentConversationService
                     'tool_name' => $call->name,
                     'tool_call_id' => $call->id,
                     'content' => json_encode(
-                        $this->executeTool($call->name, $call->argumentsJson, $organization, $user)
+                        $this->executeTool($call->name, $call->argumentsJson, $organization, $user, $thread)
                     ),
                 ]);
             }
@@ -83,7 +83,7 @@ class AgentConversationService
     /**
      * @return array<string, mixed>
      */
-    private function executeTool(string $name, string $argumentsJson, Organization $organization, User $user): array
+    private function executeTool(string $name, string $argumentsJson, Organization $organization, User $user, AgentThread $thread): array
     {
         $tool = $this->resolveTool($name);
 
@@ -92,7 +92,7 @@ class AgentConversationService
         }
 
         try {
-            return $tool->handle(json_decode($argumentsJson, true) ?? [], $organization, $user);
+            return $tool->handle(json_decode($argumentsJson, true) ?? [], $organization, $user, $thread);
         } catch (Throwable $e) {
             return ['error' => $e->getMessage()];
         }
@@ -191,12 +191,23 @@ class AgentConversationService
 
     private function systemPrompt(Organization $organization): string
     {
+        // The model has no other way to know the actual current date/time -
+        // without this, "today"/"tomorrow"/"in 2 hours" are pure guesses,
+        // which in production landed posts on the wrong day (invisible on
+        // the Launches calendar, since it's rendered around the real
+        // today) or converted local time to UTC incorrectly. Given in the
+        // org's own timezone since that's also the frame schedule_post's
+        // scheduled_at expects (see that tool's parameters()).
+        $now = now($organization->timezone)->format('l, Y-m-d H:i');
+
         return <<<PROMPT
         You are Pluma's social media assistant for the organization "{$organization->name}".
+        The current date and time is {$now} ({$organization->timezone}). Always compute relative times ("today", "tomorrow", "in 2 hours", etc.) from this exact value - never assume or guess the current date.
         You help the user schedule social media posts, generate images for those posts, and see which channels are connected.
         - Call list_channels at most once per turn - if you already called it earlier in this same conversation, reuse that result instead of calling it again, even across multiple tool calls in the same turn.
         - If the user's request needs an image, call generate_image next.
         - Once you have the channel and (if needed) a generated image, reply with plain text restating the channel, content, and (if scheduling) the time, and ask the user to confirm before you call schedule_post. Do not call schedule_post in the same turn you ask for confirmation.
+        - When scheduling, give schedule_post's scheduled_at as a plain local date-time in the organization's own timezone ({$organization->timezone}) - e.g. "2026-08-04 15:00". Do not convert it to UTC yourself; the system does that automatically.
         - Keep replies concise and conversational.
         PROMPT;
     }

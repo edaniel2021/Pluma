@@ -3,6 +3,7 @@
 namespace App\Domain\Agents\Tools;
 
 use App\Domain\Agents\Contracts\AgentToolContract;
+use App\Domain\Agents\Models\AgentThread;
 use App\Domain\Agents\Support\FalService;
 use App\Domain\Agents\Support\GeminiService;
 use App\Domain\Agents\Support\OpenAiService;
@@ -42,7 +43,7 @@ class GenerateImageTool implements AgentToolContract
         ];
     }
 
-    public function handle(array $arguments, Organization $organization, User $user): array
+    public function handle(array $arguments, Organization $organization, User $user, AgentThread $thread): array
     {
         $prompt = (string) ($arguments['prompt'] ?? '');
 

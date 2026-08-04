@@ -17,6 +17,7 @@ use App\Domain\Posts\Models\Post;
 use App\Livewire\Agents\Chat;
 use App\Livewire\Agents\Threads;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -499,8 +500,9 @@ class AgentTest extends TestCase
         $organization = $user->currentTeam;
         CurrentOrganization::set($organization);
         Integration::factory()->create(['organization_id' => $organization->id, 'provider' => 'linkedin']);
+        $thread = $organization->agentThreads()->create(['user_id' => $user->id]);
 
-        $result = app(ListIntegrationsTool::class)->handle([], $organization->fresh(), $user);
+        $result = app(ListIntegrationsTool::class)->handle([], $organization->fresh(), $user, $thread);
 
         $this->assertCount(1, $result['channels']);
         $this->assertSame('linkedin', $result['channels'][0]['platform']);
@@ -514,12 +516,13 @@ class AgentTest extends TestCase
         $organization = $user->currentTeam;
         CurrentOrganization::set($organization);
         $integration = Integration::factory()->create(['organization_id' => $organization->id]);
+        $thread = $organization->agentThreads()->create(['user_id' => $user->id]);
 
         $result = app(SchedulePostTool::class)->handle([
             'integration_id' => $integration->id,
             'content' => 'Hello world',
             'state' => 'draft',
-        ], $organization->fresh(), $user);
+        ], $organization->fresh(), $user, $thread);
 
         $post = Post::find($result['post_id']);
 
@@ -538,15 +541,91 @@ class AgentTest extends TestCase
         $organization = $user->currentTeam;
         CurrentOrganization::set($organization);
         $integration = Integration::factory()->create(['organization_id' => $organization->id]);
+        $thread = $organization->agentThreads()->create(['user_id' => $user->id]);
 
         $result = app(SchedulePostTool::class)->handle([
             'integration_id' => $integration->id,
             'content' => 'Hello world',
             'state' => 'queue',
-        ], $organization->fresh(), $user);
+        ], $organization->fresh(), $user, $thread);
 
         $this->assertArrayHasKey('error', $result);
         $this->assertSame(0, Post::count());
+
+        CurrentOrganization::clear();
+    }
+
+    /**
+     * Real production bug: asked to "schedule for today 3 PM Kuwait time",
+     * the model has no reliable way to convert that to UTC itself and it
+     * silently stored the wrong instant. schedule_post now takes a plain
+     * local date-time in the organization's own timezone and converts it
+     * to UTC server-side - the same approach Calendar::reschedule() already
+     * uses for drag-and-drop rescheduling.
+     */
+    public function test_schedule_post_tool_converts_scheduled_at_from_the_organizations_timezone_to_utc(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $organization = $user->currentTeam;
+        $organization->update(['timezone' => 'Asia/Kuwait']);
+        CurrentOrganization::set($organization);
+        $integration = Integration::factory()->create(['organization_id' => $organization->id]);
+        $thread = $organization->agentThreads()->create(['user_id' => $user->id]);
+
+        $result = app(SchedulePostTool::class)->handle([
+            'integration_id' => $integration->id,
+            'content' => 'Hello world',
+            'state' => 'queue',
+            'scheduled_at' => '2026-08-04 15:00',
+        ], $organization->fresh(), $user, $thread);
+
+        $post = Post::find($result['post_id']);
+
+        // 3 PM in Kuwait (UTC+3) is noon UTC - not 3 PM UTC.
+        $this->assertTrue($post->scheduled_at->equalTo(Carbon::parse('2026-08-04 12:00', 'UTC')));
+
+        CurrentOrganization::clear();
+    }
+
+    /**
+     * Real production bug: posts scheduled with no image attached, despite
+     * the model having generated one only a couple of tool calls earlier in
+     * the same turn - it simply didn't pass media_id along. schedule_post
+     * now falls back to the thread's most recently generated image when
+     * media_id is omitted, rather than relying on the model to thread that
+     * id forward correctly every time.
+     */
+    public function test_schedule_post_tool_defaults_to_the_threads_last_generated_image_when_media_id_is_omitted(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $organization = $user->currentTeam;
+        CurrentOrganization::set($organization);
+        $integration = Integration::factory()->create(['organization_id' => $organization->id]);
+        $thread = $organization->agentThreads()->create(['user_id' => $user->id]);
+
+        $media = $organization->addMediaFromBase64(base64_encode('fake-png-bytes'))
+            ->usingName('a wheelchair')
+            ->toMediaCollection('library');
+
+        $thread->messages()->create([
+            'role' => AgentMessageRole::Tool,
+            'tool_name' => 'generate_image',
+            'tool_call_id' => 'call_1',
+            'content' => json_encode(['media_id' => $media->id, 'url' => $media->getUrl()]),
+        ]);
+
+        $result = app(SchedulePostTool::class)->handle([
+            'integration_id' => $integration->id,
+            'content' => 'Hello world',
+            'state' => 'draft',
+            // media_id deliberately omitted.
+        ], $organization->fresh(), $user, $thread);
+
+        $post = Post::find($result['post_id']);
+        $attached = $post->getFirstMedia('default');
+
+        $this->assertNotNull($attached);
+        $this->assertFileEquals($media->getPath(), $attached->getPath());
 
         CurrentOrganization::clear();
     }
@@ -564,8 +643,9 @@ class AgentTest extends TestCase
         $user = User::factory()->withPersonalTeam()->create();
         $organization = $user->currentTeam;
         CurrentOrganization::set($organization);
+        $thread = $organization->agentThreads()->create(['user_id' => $user->id]);
 
-        $result = app(GenerateImageTool::class)->handle(['prompt' => 'a red bicycle'], $organization->fresh(), $user);
+        $result = app(GenerateImageTool::class)->handle(['prompt' => 'a red bicycle'], $organization->fresh(), $user, $thread);
 
         $this->assertArrayHasKey('media_id', $result);
         $this->assertNotNull($organization->fresh()->getMedia('library')->firstWhere('id', $result['media_id']));
@@ -595,10 +675,11 @@ class AgentTest extends TestCase
         $organization = $user->currentTeam;
         CurrentOrganization::set($organization);
 
+        $thread = $organization->agentThreads()->create(['user_id' => $user->id]);
         $longPrompt = str_repeat('a wheelchair with a sleek design and vibrant colors, ', 6);
         $this->assertGreaterThan(255, strlen($longPrompt));
 
-        $result = app(GenerateImageTool::class)->handle(['prompt' => $longPrompt], $organization->fresh(), $user);
+        $result = app(GenerateImageTool::class)->handle(['prompt' => $longPrompt], $organization->fresh(), $user, $thread);
 
         $this->assertArrayHasKey('media_id', $result);
         $media = $organization->fresh()->getMedia('library')->firstWhere('id', $result['media_id']);
@@ -627,8 +708,9 @@ class AgentTest extends TestCase
         $user = User::factory()->withPersonalTeam()->create();
         $organization = $user->currentTeam;
         CurrentOrganization::set($organization);
+        $thread = $organization->agentThreads()->create(['user_id' => $user->id]);
 
-        $result = app(GenerateImageTool::class)->handle(['prompt' => 'a red bicycle'], $organization->fresh(), $user);
+        $result = app(GenerateImageTool::class)->handle(['prompt' => 'a red bicycle'], $organization->fresh(), $user, $thread);
 
         $this->assertArrayHasKey('media_id', $result);
         $this->assertNotNull($organization->fresh()->getMedia('library')->firstWhere('id', $result['media_id']));
