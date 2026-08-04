@@ -113,6 +113,58 @@ class AgentTest extends TestCase
             ->assertDontSee('<img', false);
     }
 
+    /**
+     * Real production symptom: "sometimes I have to refresh to see the
+     * answer." getIsWaitingProperty() used to treat any non-User last
+     * message as "done", which stopped wire:poll after the *first*
+     * tool-call round of a turn - everything after that depended entirely
+     * on Reverb, with no polling fallback if a broadcast was ever dropped.
+     * A turn is only actually finished once the last message is a
+     * plain-text Assistant reply with no pending tool_calls.
+     */
+    public function test_chat_keeps_waiting_through_every_step_of_a_multi_round_tool_calling_turn(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $this->actingAs($user);
+        $thread = $user->currentTeam->agentThreads()->create([]);
+        $thread->messages()->create(['role' => AgentMessageRole::User, 'content' => 'Schedule a post']);
+
+        $this->assertTrue(Livewire::test(Chat::class, ['thread' => $thread->fresh()])->get('isWaiting'));
+
+        $thread->messages()->create([
+            'role' => AgentMessageRole::Assistant,
+            'content' => null,
+            'tool_calls' => [['id' => 'call_1', 'type' => 'function', 'function' => ['name' => 'list_channels', 'arguments' => '{}']]],
+        ]);
+
+        $this->assertTrue(
+            Livewire::test(Chat::class, ['thread' => $thread->fresh()])->get('isWaiting'),
+            'still waiting once the model has only requested a tool call - the tool hasn\'t run yet'
+        );
+
+        $thread->messages()->create([
+            'role' => AgentMessageRole::Tool,
+            'tool_name' => 'list_channels',
+            'tool_call_id' => 'call_1',
+            'content' => json_encode(['channels' => []]),
+        ]);
+
+        $this->assertTrue(
+            Livewire::test(Chat::class, ['thread' => $thread->fresh()])->get('isWaiting'),
+            'still waiting after a tool result - the model still needs another round trip to produce its final reply'
+        );
+
+        $thread->messages()->create([
+            'role' => AgentMessageRole::Assistant,
+            'content' => 'Here are your connected channels.',
+        ]);
+
+        $this->assertFalse(
+            Livewire::test(Chat::class, ['thread' => $thread->fresh()])->get('isWaiting'),
+            'no longer waiting once the model has produced its final plain-text reply'
+        );
+    }
+
     public function test_the_conversation_service_persists_a_plain_assistant_reply(): void
     {
         OpenAI::fake([

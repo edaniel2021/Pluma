@@ -58,13 +58,31 @@ class Chat extends Component
     }
 
     /**
-     * Drives whether the view keeps polling: true while the last message is
-     * still the user's (no assistant reply yet, meaning ProcessAgentMessageJob
-     * hasn't finished/failed).
+     * Drives whether the view keeps polling (the Reverb fallback - see the
+     * onAgentMessageCreated() docblock). A turn can span several tool-call
+     * rounds before the model produces its final plain-text reply, and
+     * ProcessAgentMessageJob persists an AgentMessage after every single
+     * step (each tool_calls request, each tool result) - not just at the
+     * very end. Treating "last message isn't the user's" as "done" made
+     * polling stop after the *first* such step, well before the turn
+     * actually finished: every message after that point depended entirely
+     * on its Reverb broadcast arriving, with no fallback if one was ever
+     * dropped (a real symptom - "sometimes I have to refresh to see the
+     * answer"). The turn is only truly over once the last message is a
+     * plain-text Assistant reply with no pending tool_calls (or the job
+     * gave up and posted a failure message, which looks the same).
      */
     public function getIsWaitingProperty(): bool
     {
-        return $this->thread->messages->last()?->role === AgentMessageRole::User;
+        $last = $this->thread->messages->last();
+
+        if (! $last) {
+            return false;
+        }
+
+        return $last->role === AgentMessageRole::User
+            || $last->role === AgentMessageRole::Tool
+            || ($last->role === AgentMessageRole::Assistant && ! empty($last->tool_calls));
     }
 
     public function render()
