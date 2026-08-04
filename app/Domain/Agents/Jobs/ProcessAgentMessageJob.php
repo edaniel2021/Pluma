@@ -31,6 +31,15 @@ class ProcessAgentMessageJob implements ShouldQueue
 
     public int $tries = 3;
 
+    /**
+     * Overrides Horizon's supervisor-level default (60s, config/horizon.php)
+     * - a job's own $timeout takes precedence over that. Needs to stay
+     * comfortably above config('openai.request_timeout') (90s): a turn that
+     * calls generate_image can spend most of its time in that one HTTP call,
+     * plus a couple of fast chat-completion round trips either side of it.
+     */
+    public int $timeout = 150;
+
     public function __construct(public int $threadId)
     {
     }
@@ -48,7 +57,10 @@ class ProcessAgentMessageJob implements ShouldQueue
      */
     public function middleware(): array
     {
-        return [(new WithoutOverlapping((string) $this->threadId))->releaseAfter(30)->expireAfter(120)];
+        // expireAfter must exceed $timeout above, or the lock could expire
+        // and let a duplicate job start while a legitimately slow (but still
+        // running) attempt is still mid-flight.
+        return [(new WithoutOverlapping((string) $this->threadId))->releaseAfter(30)->expireAfter(200)];
     }
 
     public function handle(AgentConversationService $conversation): void

@@ -68,7 +68,12 @@ return [
             'driver' => 'redis',
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
+            // Must exceed the longest-running job's own $timeout, or a
+            // worker can consider a still-executing job "lost" and requeue
+            // it onto another worker before it's actually done. Raised to
+            // 200 alongside ProcessAgentMessageJob's $timeout=150 (image
+            // generation via gpt-image-1 can legitimately run that long).
+            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 200),
             'block_for' => null,
             'after_commit' => false,
         ],

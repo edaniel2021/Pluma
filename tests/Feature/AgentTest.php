@@ -652,4 +652,32 @@ class AgentTest extends TestCase
         config(['services.fal.key' => 'test-fal-key']);
         $this->assertTrue(app(FalService::class)->isConfigured());
     }
+
+    /**
+     * Real production bug: "cURL error 28: Operation timed out after 30002
+     * milliseconds" calling OpenAI's gpt-image-1 image-generation endpoint -
+     * the openai-php/laravel package's default request_timeout (30s) is too
+     * short for it. Fixing that alone isn't enough though: the HTTP timeout,
+     * the job's own $timeout, the WithoutOverlapping lock's expiresAfter,
+     * and the Redis queue's retry_after all have to nest in ascending order,
+     * or the job either gets killed by Horizon before the HTTP call can
+     * finish, or gets requeued onto a second worker while still legitimately
+     * running on the first. This asserts that chain stays intact regardless
+     * of what any individual value gets tuned to later.
+     */
+    public function test_timeout_values_nest_correctly_for_slow_image_generation(): void
+    {
+        $httpTimeout = config('openai.request_timeout');
+        $job = new ProcessAgentMessageJob(1);
+        $jobTimeout = $job->timeout;
+        $lockExpiresAfter = $job->middleware()[0]->expiresAfter;
+        $queueRetryAfter = config('queue.connections.redis.retry_after');
+
+        $this->assertGreaterThan($httpTimeout, $jobTimeout,
+            "job timeout ({$jobTimeout}s) must exceed the OpenAI HTTP timeout ({$httpTimeout}s) or Horizon kills the job before the HTTP call can ever succeed");
+        $this->assertGreaterThan($jobTimeout, $lockExpiresAfter,
+            "WithoutOverlapping's expiresAfter ({$lockExpiresAfter}s) must exceed the job timeout ({$jobTimeout}s) or the lock can expire mid-run and let a duplicate job start");
+        $this->assertGreaterThan($jobTimeout, $queueRetryAfter,
+            "queue retry_after ({$queueRetryAfter}s) must exceed the job timeout ({$jobTimeout}s) or a still-running job can get requeued onto a second worker");
+    }
 }

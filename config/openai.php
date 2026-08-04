@@ -42,8 +42,14 @@ return [
     |--------------------------------------------------------------------------
     |
     | The timeout may be used to specify the maximum number of seconds to wait
-    | for a response. By default, the client will time out after 30 seconds.
+    | for a response. The package default of 30 seconds is too short for
+    | gpt-image-1 (image generation routinely takes longer than that and was
+    | hitting a real "cURL error 28: Operation timed out after 30002
+    | milliseconds" in production) - 90s gives it realistic headroom. See
+    | ProcessAgentMessageJob's own $timeout, which was raised to stay above
+    | this value - bumping this alone would do nothing if Horizon still
+    | killed the job first.
     */
 
-    'request_timeout' => env('OPENAI_REQUEST_TIMEOUT', 30),
+    'request_timeout' => env('OPENAI_REQUEST_TIMEOUT', 90),
 ];
