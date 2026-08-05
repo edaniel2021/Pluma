@@ -92,4 +92,22 @@ return [
         'key' => env('FAL_KEY'),
     ],
 
+    // Same "default to the login app's credentials" pattern as 'youtube'
+    // above - only set SEARCH_CONSOLE_CLIENT_ID/SECRET separately if you
+    // want a distinct Google Cloud project. Requires the Search Console
+    // API to be enabled on whichever project these credentials belong to.
+    'search-console' => [
+        'client_id' => env('SEARCH_CONSOLE_CLIENT_ID', env('GOOGLE_CLIENT_ID')),
+        'client_secret' => env('SEARCH_CONSOLE_CLIENT_SECRET', env('GOOGLE_CLIENT_SECRET')),
+        'redirect' => env('SEARCH_CONSOLE_REDIRECT_URI', env('APP_URL').'/seo/search-console/callback'),
+    ],
+
+    // PageSpeed Insights API - a plain API key, not OAuth (unlike every
+    // other services.php entry on this page). Used by
+    // App\Domain\Seo\Support\PageSpeedClient for desktop/mobile response
+    // time + performance score checks.
+    'pagespeed' => [
+        'key' => env('PAGESPEED_API_KEY'),
+    ],
+
 ];

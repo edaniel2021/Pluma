@@ -7,12 +7,7 @@
 
     <div>
         <div class="max-w-4xl mx-auto py-10 sm:px-6 lg:px-8">
-            <div class="bg-white shadow sm:rounded-lg p-6 text-center">
-                <h3 class="text-lg font-medium text-gray-900">{{ __('Coming soon') }}</h3>
-                <p class="mt-2 text-sm text-gray-500">
-                    {{ __('SEO tools (keyword tracking, site audits, and content recommendations) are planned for a future phase.') }}
-                </p>
-            </div>
+            @livewire('seo.websites')
         </div>
     </div>
 </x-app-layout>

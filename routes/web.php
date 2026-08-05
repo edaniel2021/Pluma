@@ -3,8 +3,10 @@
 use App\Domain\Agents\Models\AgentThread;
 use App\Domain\Billing\Http\Controllers\StripeWebhookController;
 use App\Domain\Posts\Models\Post;
+use App\Domain\Seo\Models\SeoWebsite;
 use App\Domain\WhatsApp\Models\WhatsAppAccount;
 use App\Http\Controllers\IntegrationConnectController;
+use App\Http\Controllers\SearchConsoleConnectController;
 use App\Http\Controllers\SocialAuthController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Cashier\Http\Controllers\PaymentController as CashierPaymentController;
@@ -96,20 +98,30 @@ Route::middleware([
         return view('developers.index');
     })->name('developers.index');
 
-    // Communications, SEO, and Analytics & Reports are future phases (see
-    // CLAUDE.md's phased build order) - these are placeholder landing pages
-    // only, so the nav category isn't a dead link before each phase ships.
+    // Communications and Analytics & Reports are still future phases (see
+    // CLAUDE.md's phased build order) - these stay placeholder landing
+    // pages so the nav category isn't a dead link before each phase ships.
+    // SEO is real now - see below.
     Route::get('/communications', function () {
         return view('communications.index');
     })->name('communications.index');
+
+    Route::get('/analytics', function () {
+        return view('analytics.index');
+    })->name('analytics.index');
 
     Route::get('/seo', function () {
         return view('seo.index');
     })->name('seo.index');
 
-    Route::get('/analytics', function () {
-        return view('analytics.index');
-    })->name('analytics.index');
+    Route::get('/seo/websites/{website}', function (SeoWebsite $website) {
+        return view('seo.analysis', ['website' => $website]);
+    })->name('seo.websites.show');
+
+    Route::get('/seo/search-console/redirect', [SearchConsoleConnectController::class, 'redirect'])
+        ->name('search-console.redirect');
+    Route::get('/seo/search-console/callback', [SearchConsoleConnectController::class, 'callback'])
+        ->name('search-console.callback');
 
     // Platform-wide, not organization-scoped - see the is_platform_admin
     // migration docblock for why this is a separate gate from the per-org

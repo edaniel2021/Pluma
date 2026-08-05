@@ -4,6 +4,8 @@ namespace App\Domain\Organization\Models;
 
 use App\Domain\Agents\Models\AgentThread;
 use App\Domain\Integrations\Models\Integration;
+use App\Domain\Seo\Models\SearchConsoleAccount;
+use App\Domain\Seo\Models\SeoWebsite;
 use App\Domain\WhatsApp\Models\WhatsAppAccount;
 use Database\Factories\OrganizationFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -97,5 +99,15 @@ class Organization extends JetstreamTeam implements HasMedia
     public function agentThreads(): HasMany
     {
         return $this->hasMany(AgentThread::class);
+    }
+
+    public function searchConsoleAccounts(): HasMany
+    {
+        return $this->hasMany(SearchConsoleAccount::class);
+    }
+
+    public function seoWebsites(): HasMany
+    {
+        return $this->hasMany(SeoWebsite::class);
     }
 }

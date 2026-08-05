@@ -61,6 +61,14 @@ class AppServiceProvider extends ServiceProvider
             return Socialite::buildProvider(FacebookProvider::class, config('services.instagram-facebook'));
         });
 
+        // A third distinct Google-based driver - Search Console is neither
+        // the login flow ('google') nor YouTube ('youtube'), and needs its
+        // own redirect URI/config entry for the same reason both of those
+        // already do. See SearchConsoleConnectController.
+        Socialite::extend('search-console', function ($app) {
+            return Socialite::buildProvider(GoogleProvider::class, config('services.search-console'));
+        });
+
         // Tiered by the requesting token owner's organization subscription
         // tier (config/billing.php's api_rate_limits) - covers both a
         // first-party Sanctum personal access token and a third-party
