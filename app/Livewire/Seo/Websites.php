@@ -20,6 +20,18 @@ class Websites extends Component
     public string $search_console_site_url = '';
 
     /**
+     * Which existing website's mapping row is currently open for editing -
+     * null means none. Separate from the "add website" form above: a
+     * website can only be mapped to a GSC property at creation time
+     * otherwise, with no way back in short of deleting and recreating it
+     * (losing its whole analysis history in the process, since
+     * SeoAnalysis/SeoKeywordMetric cascade-delete with their website).
+     */
+    public ?int $editingWebsiteId = null;
+
+    public string $editing_search_console_site_url = '';
+
+    /**
      * @return array<string, mixed>
      */
     protected function rules(): array
@@ -48,6 +60,32 @@ class Websites extends Component
     public function removeWebsite(SeoWebsite $website): void
     {
         $website->delete();
+    }
+
+    public function editMapping(SeoWebsite $website): void
+    {
+        $this->editingWebsiteId = $website->id;
+        $this->editing_search_console_site_url = $website->search_console_site_url ?? '';
+    }
+
+    public function cancelEditingMapping(): void
+    {
+        $this->reset(['editingWebsiteId', 'editing_search_console_site_url']);
+    }
+
+    public function saveMapping(SeoWebsite $website): void
+    {
+        $this->validate(['editing_search_console_site_url' => ['nullable', 'string']]);
+
+        $account = Auth::user()->currentTeam->searchConsoleAccounts->first();
+        $mapped = $this->editing_search_console_site_url !== '' && $account;
+
+        $website->update([
+            'search_console_account_id' => $mapped ? $account->id : null,
+            'search_console_site_url' => $mapped ? $this->editing_search_console_site_url : null,
+        ]);
+
+        $this->reset(['editingWebsiteId', 'editing_search_console_site_url']);
     }
 
     public function disconnectSearchConsole(SearchConsoleAccount $account): void

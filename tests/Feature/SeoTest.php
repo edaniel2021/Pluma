@@ -605,6 +605,62 @@ class SeoTest extends TestCase
         $this->assertNull($account->fresh());
     }
 
+    /**
+     * Real product gap: mapping a website to a Search Console property
+     * only ever happened on the "Add Website" form, at creation time -
+     * there was no way to go back and map an already-created website
+     * afterward (e.g. one added before Search Console was connected)
+     * short of deleting and recreating it, which would also wipe its
+     * whole analysis history.
+     */
+    public function test_websites_component_can_map_an_existing_unmapped_website(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        CurrentOrganization::set($user->currentTeam);
+        $account = SearchConsoleAccount::factory()->create();
+        $website = SeoWebsite::factory()->create(['url' => 'https://example.com']);
+        CurrentOrganization::clear();
+
+        Http::fake(['www.googleapis.com/webmasters/v3/sites' => Http::response([
+            'siteEntry' => [['siteUrl' => 'https://example.com/', 'permissionLevel' => 'siteOwner']],
+        ], 200)]);
+
+        Livewire::actingAs($user)->test(Websites::class)
+            ->call('editMapping', $website->id)
+            ->assertSet('editingWebsiteId', $website->id)
+            ->set('editing_search_console_site_url', 'https://example.com/')
+            ->call('saveMapping', $website->id)
+            ->assertSet('editingWebsiteId', null);
+
+        $website->refresh();
+        $this->assertSame($account->id, $website->search_console_account_id);
+        $this->assertSame('https://example.com/', $website->search_console_site_url);
+    }
+
+    public function test_websites_component_can_clear_an_existing_mapping(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        CurrentOrganization::set($user->currentTeam);
+        $account = SearchConsoleAccount::factory()->create();
+        $website = SeoWebsite::factory()->create([
+            'search_console_account_id' => $account->id,
+            'search_console_site_url' => 'https://example.com/',
+        ]);
+        CurrentOrganization::clear();
+
+        Http::fake(['www.googleapis.com/webmasters/v3/sites' => Http::response(['siteEntry' => []], 200)]);
+
+        Livewire::actingAs($user)->test(Websites::class)
+            ->call('editMapping', $website->id)
+            ->assertSet('editing_search_console_site_url', 'https://example.com/')
+            ->set('editing_search_console_site_url', '')
+            ->call('saveMapping', $website->id);
+
+        $website->refresh();
+        $this->assertNull($website->search_console_account_id);
+        $this->assertNull($website->search_console_site_url);
+    }
+
     // ---------------------------------------------------------------
     // Livewire: Analysis
     // ---------------------------------------------------------------

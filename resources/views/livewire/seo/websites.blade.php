@@ -68,25 +68,51 @@
 
     <div class="bg-white shadow sm:rounded-lg divide-y divide-gray-200">
         @forelse ($websites as $website)
-            <div class="p-4 flex items-center justify-between">
-                <div>
-                    <div class="text-sm font-medium text-gray-900">{{ $website->url }}</div>
-                    @if ($website->search_console_site_url)
-                        <div class="text-xs text-gray-500">{{ __('Mapped to') }} {{ $website->search_console_site_url }}</div>
-                    @else
-                        <div class="text-xs text-gray-400">{{ __('No Search Console property mapped') }}</div>
-                    @endif
+            <div class="p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="text-sm font-medium text-gray-900">{{ $website->url }}</div>
+                        @if ($website->search_console_site_url)
+                            <div class="text-xs text-gray-500">{{ __('Mapped to') }} {{ $website->search_console_site_url }}</div>
+                        @else
+                            <div class="text-xs text-gray-400">{{ __('No Search Console property mapped') }}</div>
+                        @endif
+                    </div>
+
+                    <div class="flex items-center gap-4">
+                        <a href="{{ route('seo.websites.show', $website) }}" class="text-sm text-indigo-600 hover:text-indigo-900">
+                            {{ __('View Analysis') }}
+                        </a>
+                        @if ($searchConsoleAccount && ! $searchConsoleAccount->isDisabled())
+                            <button type="button" wire:click="editMapping({{ $website->id }})" class="text-sm text-indigo-600 hover:text-indigo-900">
+                                {{ $website->search_console_site_url ? __('Edit mapping') : __('Map to Search Console') }}
+                            </button>
+                        @endif
+                        <button type="button" wire:click="removeWebsite({{ $website->id }})" wire:confirm="{{ __('Remove this website?') }}"
+                                class="text-sm text-red-600 hover:text-red-900">
+                            {{ __('Remove') }}
+                        </button>
+                    </div>
                 </div>
 
-                <div class="flex items-center gap-4">
-                    <a href="{{ route('seo.websites.show', $website) }}" class="text-sm text-indigo-600 hover:text-indigo-900">
-                        {{ __('View Analysis') }}
-                    </a>
-                    <button type="button" wire:click="removeWebsite({{ $website->id }})" wire:confirm="{{ __('Remove this website?') }}"
-                            class="text-sm text-red-600 hover:text-red-900">
-                        {{ __('Remove') }}
-                    </button>
-                </div>
+                @if ($editingWebsiteId === $website->id)
+                    <div class="mt-3 flex items-end gap-3">
+                        <div class="flex-1">
+                            <x-label for="editing_search_console_site_url" value="{{ __('Search Console Property') }}" />
+                            <select id="editing_search_console_site_url" wire:model="editing_search_console_site_url"
+                                    class="border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm mt-1 block w-full">
+                                <option value="">{{ __('Not mapped - crawl and PageSpeed only') }}</option>
+                                @foreach ($availableSites as $site)
+                                    <option value="{{ $site['siteUrl'] }}">{{ $site['siteUrl'] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <x-button type="button" wire:click="saveMapping({{ $website->id }})">{{ __('Save') }}</x-button>
+                        <button type="button" wire:click="cancelEditingMapping" class="text-sm text-gray-600 hover:text-gray-900">
+                            {{ __('Cancel') }}
+                        </button>
+                    </div>
+                @endif
             </div>
         @empty
             <div class="p-6 text-center text-sm text-gray-500">
