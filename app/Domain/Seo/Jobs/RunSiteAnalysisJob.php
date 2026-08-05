@@ -11,6 +11,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
+use Throwable;
 
 /**
  * Dispatched when the user clicks "Run analysis now" - a crawl + two
@@ -64,8 +65,41 @@ class RunSiteAnalysisJob implements ShouldQueue
 
         try {
             $runSiteAnalysis->execute($website);
+
+            // A retry that eventually succeeds must clear any earlier
+            // failure - otherwise a stale last_analysis_failed_at from a
+            // prior attempt could still be newer than a later
+            // analysisRequestedAt and incorrectly report failure again.
+            if ($website->last_analysis_failed_at) {
+                $website->update(['last_analysis_failed_at' => null, 'last_analysis_error' => null]);
+            }
         } finally {
             CurrentOrganization::clear();
         }
+    }
+
+    /**
+     * Called once all retry attempts are exhausted. Without this, a
+     * permanent failure left the "Run analysis now" button stuck on
+     * "Analyzing..." forever - Analysis::getIsWaitingProperty() only knew
+     * how to detect a *successful* fresh SeoAnalysis row, never a
+     * failure, so nothing ever told it to stop waiting.
+     */
+    public function failed(?Throwable $exception): void
+    {
+        $website = SeoWebsite::withoutGlobalScope('organization')->find($this->websiteId);
+
+        if (! $website) {
+            return;
+        }
+
+        CurrentOrganization::set($website->organization);
+
+        $website->update([
+            'last_analysis_failed_at' => now(),
+            'last_analysis_error' => $exception?->getMessage() ?? 'Unknown error',
+        ]);
+
+        CurrentOrganization::clear();
     }
 }

@@ -18,11 +18,21 @@ use Illuminate\Support\Facades\Http;
 class PageCrawler
 {
     /**
+     * Laravel's HTTP client sends a bare "GuzzleHttp/x" User-Agent by
+     * default, which many real sites' WAF/nginx bot-blocking rules reject
+     * outright with a 403 - hit for real in production analyzing a live
+     * site. A realistic browser User-Agent is standard practice for this
+     * kind of crawl (the site owner is analyzing their own site), not an
+     * attempt to evade any legitimate protection.
+     */
+    private const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+    /**
      * @return array{title: ?string, meta_description: ?string, h1s: array<int, string>, h2s: array<int, string>}
      */
     public function crawl(string $url): array
     {
-        $html = Http::get($url)->throw()->body();
+        $html = Http::withHeaders(['User-Agent' => self::USER_AGENT])->get($url)->throw()->body();
 
         $dom = new DOMDocument;
         libxml_use_internal_errors(true);

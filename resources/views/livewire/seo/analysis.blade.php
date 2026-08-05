@@ -15,6 +15,12 @@
         </div>
     </div>
 
+    @if ($this->analysisError)
+        <div class="mt-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-4">
+            {{ __('The last analysis attempt failed:') }} {{ $this->analysisError }}
+        </div>
+    @endif
+
     @if (! $latestAnalysis)
         <div class="mt-6 bg-white shadow sm:rounded-lg p-6 text-center text-sm text-gray-500">
             {{ __('No analysis yet - click "Run analysis now" to get started.') }}

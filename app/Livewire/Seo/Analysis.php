@@ -6,6 +6,7 @@ use App\Domain\Seo\Actions\ComputeTrendingKeywords;
 use App\Domain\Seo\Jobs\RunSiteAnalysisJob;
 use App\Domain\Seo\Models\SeoKeywordMetric;
 use App\Domain\Seo\Models\SeoWebsite;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Livewire\Component;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -27,6 +28,16 @@ class Analysis extends Component
      */
     public ?string $analysisRequestedAt = null;
 
+    /**
+     * Last-resort fallback if RunSiteAnalysisJob's failed() hook itself
+     * never fires (e.g. the worker is killed outright rather than the job
+     * throwing normally) - comfortably above the job's worst-case retry
+     * runtime: 3 tries, up to 60s backoff between each, plus real
+     * execution time (crawl + two PageSpeed calls + an optional GSC
+     * query) per attempt.
+     */
+    private const MAX_WAIT_SECONDS = 480;
+
     public function mount(SeoWebsite $website): void
     {
         $this->website = $website;
@@ -39,15 +50,53 @@ class Analysis extends Component
         RunSiteAnalysisJob::dispatch($this->website->id);
     }
 
+    /**
+     * Real production bug: RunSiteAnalysisJob used to have no failed()
+     * handler, so a permanent job failure left this stuck true forever -
+     * the only thing that could ever flip it false was a *successful*
+     * fresh SeoAnalysis row appearing, which of course never happened on
+     * failure. Now also stops waiting once a failure newer than the
+     * request is recorded, or after MAX_WAIT_SECONDS regardless.
+     */
     public function getIsWaitingProperty(): bool
     {
         if (! $this->analysisRequestedAt) {
             return false;
         }
 
-        return ! $this->website->analyses()
+        if (now()->timestamp - Carbon::parse($this->analysisRequestedAt)->timestamp > self::MAX_WAIT_SECONDS) {
+            return false;
+        }
+
+        $website = $this->website->fresh();
+
+        if ($website->last_analysis_failed_at && $website->last_analysis_failed_at->toISOString() >= $this->analysisRequestedAt) {
+            return false;
+        }
+
+        return ! $website->analyses()
             ->where('analyzed_at', '>=', $this->analysisRequestedAt)
             ->exists();
+    }
+
+    /**
+     * Only meaningful while a request is (or was) in flight - null means
+     * either nothing has been requested yet, or the most recent attempt
+     * succeeded/is still running.
+     */
+    public function getAnalysisErrorProperty(): ?string
+    {
+        if (! $this->analysisRequestedAt) {
+            return null;
+        }
+
+        $website = $this->website->fresh();
+
+        if ($website->last_analysis_failed_at && $website->last_analysis_failed_at->toISOString() >= $this->analysisRequestedAt) {
+            return $website->last_analysis_error;
+        }
+
+        return null;
     }
 
     public function exportCsv(): StreamedResponse

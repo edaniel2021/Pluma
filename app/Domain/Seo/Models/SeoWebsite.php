@@ -28,7 +28,16 @@ class SeoWebsite extends Model
         'url',
         'search_console_account_id',
         'search_console_site_url',
+        'last_analysis_failed_at',
+        'last_analysis_error',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'last_analysis_failed_at' => 'datetime',
+        ];
+    }
 
     public function searchConsoleAccount(): BelongsTo
     {

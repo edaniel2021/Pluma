@@ -113,6 +113,24 @@ class SeoTest extends TestCase
         $this->assertSame([], $result['h2s']);
     }
 
+    /**
+     * Regression test for a real staging failure: crawling a live site
+     * returned a genuine "403 Forbidden" from nginx - Laravel's HTTP
+     * client sends a bare "GuzzleHttp/x" User-Agent by default, which the
+     * site's bot-blocking rules rejected outright. A realistic browser
+     * User-Agent fixed it.
+     */
+    public function test_page_crawler_sends_a_realistic_browser_user_agent(): void
+    {
+        Http::fake([
+            'https://example.com/*' => Http::response('<html><head><title>Example</title></head></html>', 200),
+        ]);
+
+        app(PageCrawler::class)->crawl('https://example.com/');
+
+        Http::assertSent(fn ($request) => str($request->header('User-Agent')[0] ?? '')->contains('Mozilla/5.0'));
+    }
+
     // ---------------------------------------------------------------
     // PageSpeedClient
     // ---------------------------------------------------------------
@@ -426,6 +444,53 @@ class SeoTest extends TestCase
         $this->assertSame(0, SeoAnalysis::count());
     }
 
+    /**
+     * Regression test for a real staging bug: RunSiteAnalysisJob had no
+     * failed() handler at all, so a permanent failure (e.g. the target
+     * site returning a real 403) left no trace anywhere the UI could see -
+     * the "Run analysis now" button stayed stuck on "Analyzing..."
+     * forever, since Analysis::getIsWaitingProperty() only knew how to
+     * detect a *successful* fresh SeoAnalysis row.
+     */
+    public function test_run_site_analysis_job_records_the_failure_on_the_website(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        CurrentOrganization::set($user->currentTeam);
+        $website = SeoWebsite::factory()->create();
+        CurrentOrganization::clear();
+
+        (new RunSiteAnalysisJob($website->id))->failed(new \Exception('403 Forbidden'));
+
+        $website->refresh();
+        $this->assertNotNull($website->last_analysis_failed_at);
+        $this->assertSame('403 Forbidden', $website->last_analysis_error);
+    }
+
+    public function test_run_site_analysis_job_clears_a_prior_failure_once_it_succeeds(): void
+    {
+        Http::fake([
+            'example.com/*' => Http::response('<html><head><title>Example</title></head></html>', 200),
+            'pagespeedonline.googleapis.com/*' => Http::response([
+                'lighthouseResult' => ['categories' => ['performance' => ['score' => 0.9]], 'audits' => []],
+            ], 200),
+        ]);
+
+        $user = User::factory()->withPersonalTeam()->create();
+        CurrentOrganization::set($user->currentTeam);
+        $website = SeoWebsite::factory()->create([
+            'url' => 'https://example.com/',
+            'last_analysis_failed_at' => now()->subMinute(),
+            'last_analysis_error' => 'a previous failure',
+        ]);
+        CurrentOrganization::clear();
+
+        (new RunSiteAnalysisJob($website->id))->handle(app(RunSiteAnalysis::class));
+
+        $website->refresh();
+        $this->assertNull($website->last_analysis_failed_at);
+        $this->assertNull($website->last_analysis_error);
+    }
+
     // ---------------------------------------------------------------
     // Livewire: Websites
     // ---------------------------------------------------------------
@@ -534,6 +599,53 @@ class SeoTest extends TestCase
         $component->call('$refresh');
 
         $this->assertFalse($component->get('isWaiting'));
+    }
+
+    /**
+     * Regression test for a real staging bug: before RunSiteAnalysisJob
+     * had a failed() handler, a permanent job failure left isWaiting
+     * stuck true forever, since nothing ever recorded a failure for this
+     * to check against.
+     */
+    public function test_analysis_component_stops_waiting_and_shows_the_error_after_a_recorded_failure(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        CurrentOrganization::set($user->currentTeam);
+        $website = SeoWebsite::factory()->create();
+        CurrentOrganization::clear();
+
+        $component = Livewire::actingAs($user)->test(Analysis::class, ['website' => $website])
+            ->set('analysisRequestedAt', now()->subSecond()->toISOString());
+
+        $this->assertTrue($component->get('isWaiting'));
+
+        $website->update([
+            'last_analysis_failed_at' => now(),
+            'last_analysis_error' => 'HTTP request returned status code 403',
+        ]);
+
+        $component->call('$refresh');
+
+        $this->assertFalse($component->get('isWaiting'));
+        $this->assertSame('HTTP request returned status code 403', $component->get('analysisError'));
+        $component->assertSee('HTTP request returned status code 403');
+    }
+
+    public function test_analysis_component_ignores_a_failure_recorded_before_the_current_request(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        CurrentOrganization::set($user->currentTeam);
+        $website = SeoWebsite::factory()->create([
+            'last_analysis_failed_at' => now()->subHour(),
+            'last_analysis_error' => 'a stale failure from a previous click',
+        ]);
+        CurrentOrganization::clear();
+
+        $component = Livewire::actingAs($user)->test(Analysis::class, ['website' => $website])
+            ->set('analysisRequestedAt', now()->toISOString());
+
+        $this->assertTrue($component->get('isWaiting'));
+        $this->assertNull($component->get('analysisError'));
     }
 
     public function test_analysis_component_exports_a_csv(): void
