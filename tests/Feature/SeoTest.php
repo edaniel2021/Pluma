@@ -283,6 +283,45 @@ class SeoTest extends TestCase
         CurrentOrganization::clear();
     }
 
+    /**
+     * Regression test for a real staging failure: a real site's actual
+     * meta description exceeded 255 characters and hit
+     * "SQLSTATE[22001]: String data, right truncated ... value too long
+     * for type character varying(255)" - title/meta_description are now
+     * `text` columns, not `string` (varchar(255)), since there's no
+     * legitimate reason to truncate real crawled content (an overly-long
+     * meta description is itself a useful SEO finding to surface, not
+     * something to silently cut).
+     */
+    public function test_run_site_analysis_preserves_a_title_and_meta_description_longer_than_255_characters(): void
+    {
+        $longTitle = str_repeat('A very long keyword-stuffed page title ', 8);
+        $longMetaDescription = str_repeat('An unusually long meta description some real sites actually write. ', 5);
+        $this->assertGreaterThan(255, strlen($longTitle));
+        $this->assertGreaterThan(255, strlen($longMetaDescription));
+
+        Http::fake([
+            'example.com/*' => Http::response(
+                '<html><head><title>'.$longTitle.'</title><meta name="description" content="'.$longMetaDescription.'"></head></html>',
+                200
+            ),
+            'pagespeedonline.googleapis.com/*' => Http::response([
+                'lighthouseResult' => ['categories' => ['performance' => ['score' => 0.9]], 'audits' => []],
+            ], 200),
+        ]);
+
+        $user = User::factory()->withPersonalTeam()->create();
+        CurrentOrganization::set($user->currentTeam);
+        $website = SeoWebsite::factory()->create(['url' => 'https://example.com/']);
+
+        $analysis = app(RunSiteAnalysis::class)->execute($website);
+
+        $this->assertSame(trim($longTitle), $analysis->title);
+        $this->assertSame(trim($longMetaDescription), $analysis->meta_description);
+
+        CurrentOrganization::clear();
+    }
+
     public function test_run_site_analysis_refreshes_keyword_metrics_when_mapped_to_a_gsc_property(): void
     {
         Http::fake([
