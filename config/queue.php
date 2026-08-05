@@ -71,9 +71,12 @@ return [
             // Must exceed the longest-running job's own $timeout, or a
             // worker can consider a still-executing job "lost" and requeue
             // it onto another worker before it's actually done. Raised to
-            // 200 alongside ProcessAgentMessageJob's $timeout=150 (image
-            // generation via gpt-image-1 can legitimately run that long).
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 200),
+            // 260 alongside RunSiteAnalysisJob's $timeout=200 (a crawl plus
+            // two PageSpeed calls plus a Search Console query can
+            // legitimately run that long) - the highest of this app's job
+            // timeouts, so it covers ProcessAgentMessageJob's $timeout=150
+            // too.
+            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 260),
             'block_for' => null,
             'after_commit' => false,
         ],

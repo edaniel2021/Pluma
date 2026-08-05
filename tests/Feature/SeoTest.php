@@ -491,6 +491,34 @@ class SeoTest extends TestCase
         $this->assertNull($website->last_analysis_error);
     }
 
+    /**
+     * Regression test for a real staging failure: "cURL error 28:
+     * Operation timed out after 30002 milliseconds" calling PageSpeed
+     * Insights - Laravel's HTTP client defaults to a 30s timeout, too
+     * short for a real Lighthouse audit against a live site. Same class
+     * of bug (and same fix shape) as the AI Assistant's gpt-image-1
+     * timeout gotcha: raising the HTTP timeout alone is pointless unless
+     * the job's own $timeout, its WithoutOverlapping lock expiry, and the
+     * queue's retry_after all nest above it too. One job attempt makes
+     * *two* sequential PageSpeed calls (desktop + mobile), so the job
+     * timeout needs more than double the HTTP timeout, not just more.
+     */
+    public function test_timeout_values_nest_correctly_for_slow_pagespeed_calls(): void
+    {
+        $httpTimeout = PageSpeedClient::REQUEST_TIMEOUT_SECONDS;
+        $job = new RunSiteAnalysisJob(1);
+        $jobTimeout = $job->timeout;
+        $lockExpiresAfter = $job->middleware()[0]->expiresAfter;
+        $queueRetryAfter = config('queue.connections.redis.retry_after');
+
+        $this->assertGreaterThan(2 * $httpTimeout, $jobTimeout,
+            "job timeout ({$jobTimeout}s) must exceed twice the PageSpeed HTTP timeout ({$httpTimeout}s) - one attempt makes two sequential PageSpeed calls (desktop + mobile), or Horizon kills the job mid-second-call");
+        $this->assertGreaterThan($jobTimeout, $lockExpiresAfter,
+            "WithoutOverlapping's expiresAfter ({$lockExpiresAfter}s) must exceed the job timeout ({$jobTimeout}s) or the lock can expire mid-run and let a duplicate job start");
+        $this->assertGreaterThan($jobTimeout, $queueRetryAfter,
+            "queue retry_after ({$queueRetryAfter}s) must exceed the job timeout ({$jobTimeout}s) or a still-running job can get requeued onto a second worker");
+    }
+
     // ---------------------------------------------------------------
     // Livewire: Websites
     // ---------------------------------------------------------------
