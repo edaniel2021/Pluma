@@ -8,6 +8,7 @@ use App\Domain\Seo\Models\SeoWebsite;
 use App\Domain\Seo\Support\PageCrawler;
 use App\Domain\Seo\Support\PageSpeedClient;
 use App\Domain\Seo\Support\SearchConsoleClient;
+use Throwable;
 
 /**
  * Orchestrates a crawl + two PageSpeed calls + (if mapped) a Search
@@ -29,6 +30,7 @@ class RunSiteAnalysis
         private readonly PageCrawler $crawler,
         private readonly PageSpeedClient $pageSpeed,
         private readonly SearchConsoleClient $searchConsole,
+        private readonly AnalyzeRobotsAndSitemap $robotsAndSitemap,
     ) {}
 
     public function execute(SeoWebsite $website): SeoAnalysis
@@ -36,6 +38,19 @@ class RunSiteAnalysis
         $crawl = $this->crawler->crawl($website->url);
         $desktop = $this->pageSpeed->analyze($website->url, 'DESKTOP');
         $mobile = $this->pageSpeed->analyze($website->url, 'MOBILE');
+
+        // robots.txt/sitemap.xml are secondary/informational relative to
+        // the crawl+PageSpeed core purpose - an unexpected failure here
+        // degrades to a recorded parse_error rather than aborting the
+        // whole "Run analysis now" click.
+        try {
+            $robotsAndSitemap = $this->robotsAndSitemap->execute($website->url);
+        } catch (Throwable $e) {
+            $robotsAndSitemap = [
+                'robots_txt_result' => ['exists' => false, 'parse_error' => $e->getMessage()],
+                'sitemap_result' => ['exists' => false, 'parse_error' => $e->getMessage()],
+            ];
+        }
 
         $analysis = SeoAnalysis::create([
             'seo_website_id' => $website->id,
@@ -48,6 +63,8 @@ class RunSiteAnalysis
             'mobile_response_ms' => $mobile['response_time_ms'],
             'desktop_score' => $desktop['score'],
             'mobile_score' => $mobile['score'],
+            'robots_txt_result' => $robotsAndSitemap['robots_txt_result'],
+            'sitemap_result' => $robotsAndSitemap['sitemap_result'],
         ]);
 
         if ($website->search_console_account_id && $website->search_console_site_url) {

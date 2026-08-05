@@ -34,12 +34,15 @@ class RunSiteAnalysisJob implements ShouldQueue
      * Overrides Horizon's supervisor-level default (60s, config/horizon.php)
      * - a job's own $timeout takes precedence over that. Needs to stay
      * comfortably above the worst-case sequential cost of one attempt:
-     * a crawl plus two PageSpeedClient calls (each up to
-     * PageSpeedClient::REQUEST_TIMEOUT_SECONDS = 60s) plus an optional
-     * Search Console query. Same "openai.request_timeout < job $timeout"
-     * nesting requirement as the AI Assistant's gpt-image-1 gotcha.
+     * PageCrawler (30s) + RobotsTxtAnalyzer (15s) + SitemapAnalyzer (15s)
+     * + two PageSpeedClient calls (60s each) + an optional Search Console
+     * query (30s) = ~210s. Raised from 200 to 240 once robots.txt/sitemap
+     * checks were folded into this job - 200 no longer had headroom for
+     * the two new fetches once they got explicit timeouts. Same
+     * "openai.request_timeout < job $timeout" nesting requirement as the
+     * AI Assistant's gpt-image-1 gotcha.
      */
-    public int $timeout = 200;
+    public int $timeout = 240;
 
     public function __construct(public int $websiteId)
     {
@@ -64,7 +67,7 @@ class RunSiteAnalysisJob implements ShouldQueue
      */
     public function middleware(): array
     {
-        return [(new WithoutOverlapping((string) $this->websiteId))->releaseAfter(30)->expireAfter(260)];
+        return [(new WithoutOverlapping((string) $this->websiteId))->releaseAfter(30)->expireAfter(300)];
     }
 
     public function handle(RunSiteAnalysis $runSiteAnalysis): void

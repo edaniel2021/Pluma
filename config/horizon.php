@@ -210,6 +210,27 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
+
+        // Small, dedicated supervisor for RunKeywordPageAnalysisJob's own
+        // redis-seo-keywords connection (config/queue.php) - a rare,
+        // opt-in, heavy job (worst case ~20 minutes), so a low
+        // maxProcesses is intentional, not an oversight. `timeout` here is
+        // redundant with the job's own $timeout=1320 override, but kept
+        // in sync so Horizon's dashboard/logs don't confusingly show the
+        // 60s supervisor default for this queue.
+        'supervisor-2' => [
+            'connection' => 'redis-seo-keywords',
+            'queue' => ['seo-keyword-analysis'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 1,
+            'timeout' => 1320,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -219,11 +240,17 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
+            'supervisor-2' => [
+                'maxProcesses' => 2,
+            ],
         ],
 
         'local' => [
             'supervisor-1' => [
                 'maxProcesses' => 3,
+            ],
+            'supervisor-2' => [
+                'maxProcesses' => 1,
             ],
         ],
 
@@ -234,6 +261,9 @@ return [
         '*' => [
             'supervisor-1' => [
                 'maxProcesses' => 3,
+            ],
+            'supervisor-2' => [
+                'maxProcesses' => 1,
             ],
         ],
     ],

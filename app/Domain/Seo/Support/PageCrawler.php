@@ -28,11 +28,22 @@ class PageCrawler
     private const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
     /**
+     * Made explicit (was previously an implicit Laravel-default 30s) so
+     * RunSiteAnalysisJob's and RunKeywordPageAnalysisJob's own timeout
+     * nesting math is a real, checkable number rather than "whatever
+     * Laravel defaults to today" - same reasoning as
+     * PageSpeedClient::REQUEST_TIMEOUT_SECONDS.
+     */
+    public const REQUEST_TIMEOUT_SECONDS = 30;
+
+    /**
      * @return array{title: ?string, meta_description: ?string, h1s: array<int, string>, h2s: array<int, string>}
      */
     public function crawl(string $url): array
     {
-        $html = Http::withHeaders(['User-Agent' => self::USER_AGENT])->get($url)->throw()->body();
+        $html = Http::timeout(self::REQUEST_TIMEOUT_SECONDS)
+            ->withHeaders(['User-Agent' => self::USER_AGENT])
+            ->get($url)->throw()->body();
 
         $dom = new DOMDocument;
         libxml_use_internal_errors(true);

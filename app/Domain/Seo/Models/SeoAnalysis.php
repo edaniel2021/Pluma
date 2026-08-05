@@ -32,6 +32,8 @@ class SeoAnalysis extends Model
         'mobile_response_ms',
         'desktop_score',
         'mobile_score',
+        'robots_txt_result',
+        'sitemap_result',
     ];
 
     protected function casts(): array
@@ -40,6 +42,8 @@ class SeoAnalysis extends Model
             'analyzed_at' => 'datetime',
             'h1s' => 'array',
             'h2s' => 'array',
+            'robots_txt_result' => 'array',
+            'sitemap_result' => 'array',
         ];
     }
 

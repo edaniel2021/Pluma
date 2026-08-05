@@ -3,8 +3,11 @@
 namespace App\Livewire\Seo;
 
 use App\Domain\Seo\Actions\ComputeTrendingKeywords;
+use App\Domain\Seo\Actions\RunKeywordPageAnalysis;
+use App\Domain\Seo\Jobs\RunKeywordPageAnalysisJob;
 use App\Domain\Seo\Jobs\RunSiteAnalysisJob;
 use App\Domain\Seo\Models\SeoKeywordMetric;
+use App\Domain\Seo\Models\SeoPageAnalysis;
 use App\Domain\Seo\Models\SeoWebsite;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -38,9 +41,31 @@ class Analysis extends Component
      */
     private const MAX_WAIT_SECONDS = 480;
 
+    /**
+     * Comma-separated keyword list for the keyword-driven page analysis
+     * flow - prefilled from the website's last submission on mount.
+     */
+    public string $keywordsInput = '';
+
+    /**
+     * Same "ephemeral component property, not persisted" pattern as
+     * analysisRequestedAt, for the separate keyword-check async flow.
+     */
+    public ?string $keywordAnalysisRequestedAt = null;
+
+    /**
+     * Sized just above RunKeywordPageAnalysisJob's own $timeout=1320 -
+     * that job has no retries (tries=1), so there's no backoff window to
+     * add on top of the timeout, unlike MAX_WAIT_SECONDS above.
+     */
+    private const KEYWORD_MAX_WAIT_SECONDS = 1400;
+
     public function mount(SeoWebsite $website): void
     {
         $this->website = $website;
+        $this->keywordsInput = $website->last_keyword_check_keywords
+            ? implode(', ', $website->last_keyword_check_keywords)
+            : '';
     }
 
     public function runAnalysis(): void
@@ -48,6 +73,39 @@ class Analysis extends Component
         $this->analysisRequestedAt = now()->toISOString();
 
         RunSiteAnalysisJob::dispatch($this->website->id);
+    }
+
+    public function runKeywordAnalysis(): void
+    {
+        $this->validate(['keywordsInput' => ['required', 'string']]);
+
+        if (! $this->website->search_console_site_url) {
+            $this->addError('keywordsInput', __('Map this website to a Search Console property before checking keyword rankings.'));
+
+            return;
+        }
+
+        $keywords = collect(explode(',', $this->keywordsInput))
+            ->map(fn (string $keyword) => trim($keyword))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($keywords->isEmpty()) {
+            $this->addError('keywordsInput', __('Enter at least one keyword.'));
+
+            return;
+        }
+
+        if ($keywords->count() > RunKeywordPageAnalysis::MAX_KEYWORDS_PER_SUBMISSION) {
+            $this->addError('keywordsInput', __('Enter at most :max keywords.', ['max' => RunKeywordPageAnalysis::MAX_KEYWORDS_PER_SUBMISSION]));
+
+            return;
+        }
+
+        $this->keywordAnalysisRequestedAt = now()->toISOString();
+
+        RunKeywordPageAnalysisJob::dispatch($this->website->id, $keywords->all());
     }
 
     /**
@@ -99,12 +157,55 @@ class Analysis extends Component
         return null;
     }
 
+    /**
+     * Mirrors getIsWaitingProperty()'s pattern, but completion can't be
+     * inferred from "does a fresh child row exist" like that one does -
+     * a legitimately correct keyword-check result can be zero rank rows
+     * (none of the submitted keywords rank for any page), which is
+     * indistinguishable from "still running" under that approach. Uses
+     * the explicit last_keyword_analysis_completed_at marker instead.
+     */
+    public function getIsKeywordAnalysisWaitingProperty(): bool
+    {
+        if (! $this->keywordAnalysisRequestedAt) {
+            return false;
+        }
+
+        if (now()->timestamp - Carbon::parse($this->keywordAnalysisRequestedAt)->timestamp > self::KEYWORD_MAX_WAIT_SECONDS) {
+            return false;
+        }
+
+        $website = $this->website->fresh();
+
+        if ($website->last_keyword_analysis_failed_at && $website->last_keyword_analysis_failed_at->toISOString() >= $this->keywordAnalysisRequestedAt) {
+            return false;
+        }
+
+        return ! ($website->last_keyword_analysis_completed_at && $website->last_keyword_analysis_completed_at->toISOString() >= $this->keywordAnalysisRequestedAt);
+    }
+
+    public function getKeywordAnalysisErrorProperty(): ?string
+    {
+        if (! $this->keywordAnalysisRequestedAt) {
+            return null;
+        }
+
+        $website = $this->website->fresh();
+
+        if ($website->last_keyword_analysis_failed_at && $website->last_keyword_analysis_failed_at->toISOString() >= $this->keywordAnalysisRequestedAt) {
+            return $website->last_keyword_analysis_error;
+        }
+
+        return null;
+    }
+
     public function exportCsv(): StreamedResponse
     {
         $latest = $this->latestAnalysis();
         $keywords = $this->latestKeywordMetrics();
+        $pageAnalyses = $this->pageAnalyses();
 
-        return response()->streamDownload(function () use ($latest, $keywords) {
+        return response()->streamDownload(function () use ($latest, $keywords, $pageAnalyses) {
             $handle = fopen('php://output', 'w');
 
             fputcsv($handle, ['Section', 'Field', 'Value']);
@@ -116,11 +217,34 @@ class Analysis extends Component
             fputcsv($handle, ['Performance', 'Desktop Score', $latest?->desktop_score]);
             fputcsv($handle, ['Performance', 'Mobile Response (ms)', $latest?->mobile_response_ms]);
             fputcsv($handle, ['Performance', 'Mobile Score', $latest?->mobile_score]);
+            fputcsv($handle, ['Robots.txt', 'Exists', $latest?->robots_txt_result['exists'] ?? null]);
+            fputcsv($handle, ['Robots.txt', 'Blocks Indexing', $latest?->robots_txt_result['blocks_indexing'] ?? null]);
+            fputcsv($handle, ['Sitemap', 'Exists', $latest?->sitemap_result['exists'] ?? null]);
+            fputcsv($handle, ['Sitemap', 'Is Index', $latest?->sitemap_result['is_index'] ?? null]);
+            fputcsv($handle, ['Sitemap', 'URL Count', $latest?->sitemap_result['url_count'] ?? null]);
             fputcsv($handle, []);
             fputcsv($handle, ['Query', 'Clicks', 'Impressions', 'CTR', 'Position']);
 
             foreach ($keywords as $metric) {
                 fputcsv($handle, [$metric->query, $metric->clicks, $metric->impressions, $metric->ctr, $metric->position]);
+            }
+
+            fputcsv($handle, []);
+            fputcsv($handle, ['Keyword Page Rankings']);
+            fputcsv($handle, ['Keyword', 'Page URL', 'Clicks', 'Impressions', 'CTR', 'Position']);
+
+            foreach ($pageAnalyses as $page) {
+                foreach ($page->keywordRanks as $rank) {
+                    fputcsv($handle, [$rank->keyword, $page->page_url, $rank->clicks, $rank->impressions, $rank->ctr, $rank->position]);
+                }
+            }
+
+            fputcsv($handle, []);
+            fputcsv($handle, ['Page Analysis']);
+            fputcsv($handle, ['Page URL', 'Title', 'Meta Description', 'H1s', 'H2s', 'Crawl Error']);
+
+            foreach ($pageAnalyses as $page) {
+                fputcsv($handle, [$page->page_url, $page->title, $page->meta_description, implode(' | ', $page->h1s ?? []), implode(' | ', $page->h2s ?? []), $page->crawl_error]);
             }
 
             fclose($handle);
@@ -149,12 +273,34 @@ class Analysis extends Component
             ->get();
     }
 
+    /**
+     * Only meaningful once at least one keyword check has been submitted -
+     * an empty collection before that renders as "no section yet" rather
+     * than "checked, nothing found." Sorted by each page's aggregate
+     * clicks across its ranking keywords, highest first.
+     *
+     * @return Collection<int, SeoPageAnalysis>
+     */
+    private function pageAnalyses(): Collection
+    {
+        if (! $this->website->last_keyword_check_keywords) {
+            return collect();
+        }
+
+        return $this->website->pageAnalyses()
+            ->with('keywordRanks')
+            ->get()
+            ->sortByDesc(fn (SeoPageAnalysis $page) => $page->keywordRanks->sum('clicks'))
+            ->values();
+    }
+
     public function render(ComputeTrendingKeywords $trending)
     {
         return view('livewire.seo.analysis', [
             'latestAnalysis' => $this->latestAnalysis(),
             'keywordMetrics' => $this->latestKeywordMetrics(),
             'trendingKeywords' => $trending->execute($this->website),
+            'pageAnalyses' => $this->pageAnalyses(),
         ]);
     }
 }

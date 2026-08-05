@@ -30,12 +30,19 @@ class SeoWebsite extends Model
         'search_console_site_url',
         'last_analysis_failed_at',
         'last_analysis_error',
+        'last_keyword_check_keywords',
+        'last_keyword_analysis_completed_at',
+        'last_keyword_analysis_failed_at',
+        'last_keyword_analysis_error',
     ];
 
     protected function casts(): array
     {
         return [
             'last_analysis_failed_at' => 'datetime',
+            'last_keyword_check_keywords' => 'array',
+            'last_keyword_analysis_completed_at' => 'datetime',
+            'last_keyword_analysis_failed_at' => 'datetime',
         ];
     }
 
@@ -52,6 +59,11 @@ class SeoWebsite extends Model
     public function keywordMetrics(): HasMany
     {
         return $this->hasMany(SeoKeywordMetric::class);
+    }
+
+    public function pageAnalyses(): HasMany
+    {
+        return $this->hasMany(SeoPageAnalysis::class);
     }
 
     protected static function newFactory(): SeoWebsiteFactory

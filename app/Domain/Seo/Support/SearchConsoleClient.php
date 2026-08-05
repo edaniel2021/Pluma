@@ -18,6 +18,22 @@ class SearchConsoleClient
     private const BASE_URL = 'https://www.googleapis.com/webmasters/v3';
 
     /**
+     * Made explicit (was previously an implicit Laravel-default 30s on
+     * queryKeywords()/listSites(), and didn't exist at all yet on the new
+     * queryPagesForKeyword()) so RunSiteAnalysisJob's and
+     * RunKeywordPageAnalysisJob's own timeout nesting math is a real,
+     * checkable number - same reasoning as PageSpeedClient's own constant.
+     */
+    public const REQUEST_TIMEOUT_SECONDS = 30;
+
+    /**
+     * Per-keyword page-dimension query only cares about the top-ranking
+     * pages for that one keyword, not an exhaustive list - far below the
+     * unfiltered query-dimension pull's rowLimit of 1000.
+     */
+    private const PAGE_QUERY_ROW_LIMIT = 100;
+
+    /**
      * GET /sites - the verified properties this Google account has access
      * to, used by the Websites config page to offer a dropdown instead of
      * a raw text field.
@@ -54,13 +70,44 @@ class SearchConsoleClient
             ->json('rows', []);
     }
 
+    /**
+     * POST /sites/{siteUrl}/searchAnalytics/query filtered to one exact
+     * keyword via dimensionFilterGroups, dimensioned by page - which
+     * pages rank for this specific keyword and their
+     * clicks/impressions/ctr/position. GSC's filter groups only combine
+     * via AND (no OR across groups), which is why this takes one keyword
+     * at a time rather than a batch - RunKeywordPageAnalysis calls this
+     * once per submitted keyword.
+     *
+     * @return array<int, array{keys: array<int, string>, clicks: float, impressions: float, ctr: float, position: float}>
+     */
+    public function queryPagesForKeyword(SearchConsoleAccount $account, string $siteUrl, string $keyword, string $startDate, string $endDate): array
+    {
+        return $this->request($account)
+            ->post(self::BASE_URL.'/sites/'.rawurlencode($siteUrl).'/searchAnalytics/query', [
+                'startDate' => $startDate,
+                'endDate' => $endDate,
+                'dimensions' => ['page'],
+                'dimensionFilterGroups' => [
+                    [
+                        'filters' => [
+                            ['dimension' => 'query', 'operator' => 'equals', 'expression' => $keyword],
+                        ],
+                    ],
+                ],
+                'rowLimit' => self::PAGE_QUERY_ROW_LIMIT,
+            ])
+            ->throw()
+            ->json('rows', []);
+    }
+
     private function request(SearchConsoleAccount $account): PendingRequest
     {
         if ($account->needsTokenRefresh()) {
             $this->refreshAccessToken($account);
         }
 
-        return Http::withToken($account->access_token)->acceptJson();
+        return Http::timeout(self::REQUEST_TIMEOUT_SECONDS)->withToken($account->access_token)->acceptJson();
     }
 
     /**

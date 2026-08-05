@@ -81,6 +81,25 @@ return [
             'after_commit' => false,
         ],
 
+        // Dedicated connection for RunKeywordPageAnalysisJob - its
+        // worst-case runtime (~20 minutes: up to 15 GSC queries + 25 page
+        // crawls) is far beyond every other job on the `redis` connection
+        // above. Bumping that connection's shared retry_after 5x just for
+        // this one rare, opt-in, heavy feature would raise how long a
+        // genuinely crashed worker's job sits un-retried for every job in
+        // the app - a worse trade than giving this job its own queue.
+        // Same Redis server as `redis` above, just a different queue name
+        // and its own retry_after.
+        'redis-seo-keywords' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => env('REDIS_SEO_KEYWORDS_QUEUE', 'seo-keyword-analysis'),
+            // Must exceed RunKeywordPageAnalysisJob's own $timeout=1320.
+            'retry_after' => (int) env('REDIS_SEO_KEYWORDS_QUEUE_RETRY_AFTER', 1380),
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
         'deferred' => [
             'driver' => 'deferred',
         ],
