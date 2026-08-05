@@ -28,6 +28,7 @@ class SearchConsoleClient
     {
         return $this->request($account)
             ->get(self::BASE_URL.'/sites')
+            ->throw()
             ->json('siteEntry', []);
     }
 
@@ -49,6 +50,7 @@ class SearchConsoleClient
                 'dimensions' => ['query'],
                 'rowLimit' => 1000,
             ])
+            ->throw()
             ->json('rows', []);
     }
 

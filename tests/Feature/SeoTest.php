@@ -202,6 +202,44 @@ class SeoTest extends TestCase
         });
     }
 
+    /**
+     * Regression test for a real staging bug: a genuine
+     * "403 ACCESS_TOKEN_SCOPE_INSUFFICIENT" from Google (the OAuth consent
+     * screen's configured scopes didn't actually include
+     * webmasters.readonly, despite the app requesting it at connect time)
+     * was completely indistinguishable from "this account has zero
+     * verified properties" - listSites()/queryKeywords() never called
+     * throw(), so a failed response's missing "siteEntry"/"rows" key just
+     * silently fell back to the empty-array default.
+     */
+    public function test_search_console_client_throws_on_a_failed_list_sites_response(): void
+    {
+        Http::fake([
+            'www.googleapis.com/webmasters/v3/sites' => Http::response([
+                'error' => ['code' => 403, 'message' => 'Request had insufficient authentication scopes.'],
+            ], 403),
+        ]);
+
+        $account = SearchConsoleAccount::factory()->make(['access_token' => 'test-token', 'token_expires_at' => now()->addHour()]);
+
+        $this->expectException(\Illuminate\Http\Client\RequestException::class);
+
+        app(SearchConsoleClient::class)->listSites($account);
+    }
+
+    public function test_search_console_client_throws_on_a_failed_query_keywords_response(): void
+    {
+        Http::fake([
+            'www.googleapis.com/webmasters/v3/sites/*/searchAnalytics/query' => Http::response(['error' => ['code' => 403]], 403),
+        ]);
+
+        $account = SearchConsoleAccount::factory()->make(['access_token' => 'test-token', 'token_expires_at' => now()->addHour()]);
+
+        $this->expectException(\Illuminate\Http\Client\RequestException::class);
+
+        app(SearchConsoleClient::class)->queryKeywords($account, 'https://example.com/', '2026-07-01', '2026-07-28');
+    }
+
     public function test_search_console_client_refreshes_an_expired_token_before_calling(): void
     {
         config(['services.search-console.client_id' => 'test-client-id', 'services.search-console.client_secret' => 'test-secret']);
@@ -603,6 +641,29 @@ class SeoTest extends TestCase
             ->call('disconnectSearchConsole', $account->id);
 
         $this->assertNull($account->fresh());
+    }
+
+    /**
+     * Regression test for a real staging bug: a genuine 403
+     * ACCESS_TOKEN_SCOPE_INSUFFICIENT from Google looked exactly like "no
+     * properties" with zero explanation - a connected account that
+     * demonstrably had real Search Console access (confirmed by logging
+     * into Search Console directly) appeared totally unmapped with no clue
+     * why. The failure is now surfaced instead of silently swallowed.
+     */
+    public function test_websites_component_surfaces_a_search_console_api_failure_instead_of_silently_showing_empty(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        CurrentOrganization::set($user->currentTeam);
+        SearchConsoleAccount::factory()->create(['google_email' => 'seo@example.com']);
+        CurrentOrganization::clear();
+
+        Http::fake(['www.googleapis.com/webmasters/v3/sites' => Http::response([
+            'error' => ['message' => 'Request had insufficient authentication scopes.'],
+        ], 403)]);
+
+        Livewire::actingAs($user)->test(Websites::class)
+            ->assertSee('Request had insufficient authentication scopes.');
     }
 
     /**

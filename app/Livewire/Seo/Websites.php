@@ -98,16 +98,27 @@ class Websites extends Component
         $organization = Auth::user()->currentTeam;
         $account = $organization->searchConsoleAccounts->first();
         $availableSites = [];
+        $availableSitesError = null;
 
         // A live call on every render is acceptable here (sites.list is a
         // cheap, fast lookup, not something like image generation) - but a
         // network hiccup or a disabled/expired account must not break the
         // whole config page, just leave the property dropdown empty.
+        //
+        // The failure itself is still surfaced (not silently swallowed) -
+        // real production bug: a genuine 403 ACCESS_TOKEN_SCOPE_INSUFFICIENT
+        // (the OAuth consent screen's configured scopes didn't actually
+        // include webmasters.readonly, despite the app requesting it at
+        // connect time) looked identical to "this account really has zero
+        // verified properties" with no error message at all - completely
+        // misleading when the account demonstrably has real Search Console
+        // access.
         if ($account && ! $account->isDisabled()) {
             try {
                 $availableSites = $searchConsole->listSites($account);
-            } catch (Throwable) {
+            } catch (Throwable $e) {
                 $availableSites = [];
+                $availableSitesError = $e->getMessage();
             }
         }
 
@@ -115,6 +126,7 @@ class Websites extends Component
             'websites' => $organization->seoWebsites,
             'searchConsoleAccount' => $account,
             'availableSites' => $availableSites,
+            'availableSitesError' => $availableSitesError,
         ]);
     }
 }
