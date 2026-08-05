@@ -1501,4 +1501,29 @@ class SeoTest extends TestCase
         $this->assertFalse($component->get('isKeywordAnalysisWaiting'));
         $this->assertSame('Search Console request failed', $component->get('keywordAnalysisError'));
     }
+
+    /**
+     * The clicks/impressions/position figures are a rolling window (28
+     * days), not a lifetime total - the UI must say which window, since
+     * that wasn't visible anywhere before this test was added.
+     */
+    public function test_analysis_component_shows_the_keyword_check_data_period(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        CurrentOrganization::set($user->currentTeam);
+        $website = SeoWebsite::factory()->create(['last_keyword_check_keywords' => ['wheelchair kuwait']]);
+        SeoAnalysis::factory()->create(['seo_website_id' => $website->id]);
+        $page = SeoPageAnalysis::factory()->create(['seo_website_id' => $website->id]);
+        SeoKeywordPageRank::factory()->create([
+            'seo_website_id' => $website->id,
+            'seo_page_analysis_id' => $page->id,
+            'period_start' => '2026-07-08',
+            'period_end' => '2026-08-05',
+        ]);
+        CurrentOrganization::clear();
+
+        Livewire::actingAs($user)->test(Analysis::class, ['website' => $website])
+            ->assertSee('Jul 8')
+            ->assertSee('Aug 5, 2026');
+    }
 }

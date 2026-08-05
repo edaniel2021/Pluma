@@ -294,13 +294,36 @@ class Analysis extends Component
             ->values();
     }
 
+    /**
+     * The clicks/impressions/position figures are a rolling window, not a
+     * lifetime total - every rank row from one run shares the same
+     * period_start/period_end, so the first one found is representative
+     * of the whole result set.
+     *
+     * @param  Collection<int, SeoPageAnalysis>  $pageAnalyses
+     * @return array{start: \Illuminate\Support\Carbon, end: \Illuminate\Support\Carbon}|null
+     */
+    private function keywordCheckPeriod(Collection $pageAnalyses): ?array
+    {
+        $firstRank = $pageAnalyses->flatMap(fn (SeoPageAnalysis $page) => $page->keywordRanks)->first();
+
+        if (! $firstRank) {
+            return null;
+        }
+
+        return ['start' => $firstRank->period_start, 'end' => $firstRank->period_end];
+    }
+
     public function render(ComputeTrendingKeywords $trending)
     {
+        $pageAnalyses = $this->pageAnalyses();
+
         return view('livewire.seo.analysis', [
             'latestAnalysis' => $this->latestAnalysis(),
             'keywordMetrics' => $this->latestKeywordMetrics(),
             'trendingKeywords' => $trending->execute($this->website),
-            'pageAnalyses' => $this->pageAnalyses(),
+            'pageAnalyses' => $pageAnalyses,
+            'keywordCheckPeriod' => $this->keywordCheckPeriod($pageAnalyses),
         ]);
     }
 }
