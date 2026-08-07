@@ -74,11 +74,12 @@ class PublishPostJob implements ShouldQueue
         CurrentOrganization::set($post->organization);
 
         try {
-            $providers->driver($post->integration->provider)->post($post->integration, $post);
+            $providerPostId = $providers->driver($post->integration->provider)->post($post->integration, $post);
 
             $post->update([
                 'state' => PostState::Published,
                 'published_at' => now(),
+                'provider_post_id' => $providerPostId,
             ]);
         } catch (RefreshTokenException $e) {
             $post->errors()->create([

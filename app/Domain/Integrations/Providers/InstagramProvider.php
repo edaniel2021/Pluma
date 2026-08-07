@@ -107,7 +107,7 @@ class InstagramProvider extends AbstractSocialProvider
         $integration->forceFill(['disabled_at' => now()])->save();
     }
 
-    public function post(Integration $integration, Post $post): void
+    public function post(Integration $integration, Post $post): ?string
     {
         $media = $post->getFirstMedia('default');
 
@@ -138,8 +138,12 @@ class InstagramProvider extends AbstractSocialProvider
             $integration
         );
 
-        if (! $publish->json('id')) {
+        $postId = $publish->json('id');
+
+        if (! $postId) {
             throw new BadBodyException("Instagram accepted the publish request but returned no post ID for post #{$post->id}.");
         }
+
+        return $postId;
     }
 }

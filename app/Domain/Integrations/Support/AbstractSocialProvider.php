@@ -4,6 +4,7 @@ namespace App\Domain\Integrations\Support;
 
 use App\Domain\Integrations\Contracts\SocialProviderContract;
 use App\Domain\Integrations\Models\Integration;
+use App\Domain\Posts\Models\Post;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Collection;
@@ -38,6 +39,18 @@ abstract class AbstractSocialProvider implements SocialProviderContract
     public function redirectParameters(): array
     {
         return [];
+    }
+
+    /**
+     * Default for every provider that hasn't implemented real engagement
+     * fetching yet - `supported: false` is a normal, expected result here,
+     * not an error, so this returns cleanly rather than throwing.
+     *
+     * @return array{supported: bool, likes: ?int, comments: ?int, shares: ?int}
+     */
+    public function fetchEngagement(Integration $integration, Post $post): array
+    {
+        return ['supported' => false, 'likes' => null, 'comments' => null, 'shares' => null];
     }
 
     /**

@@ -135,4 +135,41 @@ class PostCrudTest extends TestCase
             ->assertDontSeeHtml('<svg')
             ->assertOk();
     }
+
+    public function test_index_shows_engagement_counts_once_fetched(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $this->actingAs($user);
+        $integration = Integration::factory()->create(['provider' => 'facebook']);
+        Post::factory()->create([
+            'integration_id' => $integration->id,
+            'likes_count' => 10,
+            'comments_count' => 2,
+            'shares_count' => 1,
+            'engagement_fetched_at' => now(),
+        ]);
+
+        Livewire::actingAs($user)->test(Index::class)
+            ->assertSee('10')
+            ->assertSee('2')
+            ->assertSee('1');
+    }
+
+    public function test_index_hides_engagement_counts_before_they_have_been_fetched(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $this->actingAs($user);
+        $integration = Integration::factory()->create(['provider' => 'facebook']);
+        Post::factory()->create([
+            'integration_id' => $integration->id,
+            'engagement_fetched_at' => null,
+        ]);
+
+        // The Facebook platform icon itself is an <svg>, so this checks for
+        // a fragment unique to the heart (likes) icon's path specifically,
+        // not the absence of any <svg> at all.
+        Livewire::actingAs($user)->test(Index::class)
+            ->assertDontSeeHtml('M21 8.25c0-2.485')
+            ->assertOk();
+    }
 }

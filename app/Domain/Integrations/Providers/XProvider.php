@@ -66,7 +66,7 @@ class XProvider extends AbstractSocialProvider
         ])->save();
     }
 
-    public function post(Integration $integration, Post $post): void
+    public function post(Integration $integration, Post $post): ?string
     {
         $response = $this->request($integration)
             ->post('https://api.x.com/2/tweets', [
@@ -75,8 +75,12 @@ class XProvider extends AbstractSocialProvider
 
         $this->assertSuccessful($response, $integration);
 
-        if (! $response->json('data.id')) {
+        $tweetId = $response->json('data.id');
+
+        if (! $tweetId) {
             throw new BadBodyException("X accepted the request but returned no tweet ID for post #{$post->id}.");
         }
+
+        return $tweetId;
     }
 }

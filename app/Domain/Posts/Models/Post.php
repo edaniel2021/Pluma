@@ -33,6 +33,12 @@ class Post extends Model implements HasMedia
         'state',
         'scheduled_at',
         'published_at',
+        'provider_post_id',
+        'likes_count',
+        'comments_count',
+        'shares_count',
+        'engagement_fetched_at',
+        'engagement_fetch_error',
     ];
 
     protected function casts(): array
@@ -41,6 +47,7 @@ class Post extends Model implements HasMedia
             'state' => PostState::class,
             'scheduled_at' => 'datetime',
             'published_at' => 'datetime',
+            'engagement_fetched_at' => 'datetime',
         ];
     }
 

@@ -22,6 +22,13 @@ use Laravel\Socialite\Two\User as SocialiteUser;
  */
 class FacebookProvider extends AbstractSocialProvider
 {
+    /**
+     * A single lightweight GET - made explicit rather than relying on
+     * Laravel's implicit 30s default, matching this codebase's established
+     * "every HTTP call gets a real, checkable timeout" convention.
+     */
+    private const ENGAGEMENT_REQUEST_TIMEOUT_SECONDS = 15;
+
     public function key(): string
     {
         return 'facebook';
@@ -101,7 +108,7 @@ class FacebookProvider extends AbstractSocialProvider
         $integration->forceFill(['disabled_at' => now()])->save();
     }
 
-    public function post(Integration $integration, Post $post): void
+    public function post(Integration $integration, Post $post): ?string
     {
         $media = $post->getFirstMedia('default');
 
@@ -111,9 +118,47 @@ class FacebookProvider extends AbstractSocialProvider
 
         $this->assertSuccessful($response, $integration);
 
-        if (! $response->json('id') && ! $response->json('post_id')) {
+        // /photos returns "post_id" (the feed post) alongside "id" (the
+        // photo itself) - "post_id" is the one engagement queries need.
+        $postId = $response->json('post_id') ?? $response->json('id');
+
+        if (! $postId) {
             throw new BadBodyException("Facebook accepted the request but returned no post ID for post #{$post->id}.");
         }
+
+        return $postId;
+    }
+
+    /**
+     * Verified against Meta's Graph API reference: pages_read_engagement
+     * (already requested in scopes() above) is sufficient - unlike
+     * LinkedIn's equivalent, this isn't gated behind an invite-only
+     * permission. "shares" is a struct with a "count" key, but Facebook
+     * omits fields entirely when their value would be zero - defaulted to
+     * 0 rather than left null, since "zero shares" is a real known value,
+     * not "we don't know."
+     */
+    public function fetchEngagement(Integration $integration, Post $post): array
+    {
+        if (! $post->provider_post_id) {
+            return ['supported' => true, 'likes' => null, 'comments' => null, 'shares' => null];
+        }
+
+        $response = $this->request($integration)
+            ->timeout(self::ENGAGEMENT_REQUEST_TIMEOUT_SECONDS)
+            ->get("https://graph.facebook.com/v23.0/{$post->provider_post_id}", [
+                'fields' => 'likes.summary(true),comments.summary(true),shares',
+                'access_token' => $integration->access_token,
+            ]);
+
+        $this->assertSuccessful($response, $integration);
+
+        return [
+            'supported' => true,
+            'likes' => $response->json('likes.summary.total_count', 0),
+            'comments' => $response->json('comments.summary.total_count', 0),
+            'shares' => $response->json('shares.count', 0),
+        ];
     }
 
     protected function postFeedMessage(Integration $integration, Post $post)

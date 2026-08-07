@@ -114,7 +114,7 @@ class YouTubeProvider extends AbstractSocialProvider
      * true chunked upload for very large videos is a further step not
      * built here).
      */
-    public function post(Integration $integration, Post $post): void
+    public function post(Integration $integration, Post $post): ?string
     {
         $media = $post->getFirstMedia('default');
 
@@ -152,8 +152,12 @@ class YouTubeProvider extends AbstractSocialProvider
 
         $this->assertSuccessful($upload, $integration);
 
-        if (! $upload->json('id')) {
+        $videoId = $upload->json('id');
+
+        if (! $videoId) {
             throw new BadBodyException("YouTube accepted the video but returned no video ID for post #{$post->id}.");
         }
+
+        return $videoId;
     }
 }

@@ -76,10 +76,29 @@ interface SocialProviderContract
     public function checkValidity(Integration $integration): bool;
 
     /**
-     * Publish the post to this integration's connected account.
+     * Publish the post to this integration's connected account. Returns
+     * the platform's own identifier for the created post (e.g. Facebook's
+     * post ID, LinkedIn's share URN from the x-restli-id header) so it can
+     * be persisted onto Post::provider_post_id for later lookups (e.g.
+     * fetchEngagement()) - null if the platform genuinely exposes no such
+     * identifier.
      *
      * @throws \App\Domain\Integrations\Support\RefreshTokenException when the access token was rejected
      * @throws \App\Domain\Integrations\Support\BadBodyException on any other platform-side failure
      */
-    public function post(Integration $integration, Post $post): void;
+    public function post(Integration $integration, Post $post): ?string;
+
+    /**
+     * Fetch the current likes/comments/shares snapshot for an already-
+     * published post. Most platforms don't support this yet (see
+     * AbstractSocialProvider's default, which returns `supported: false`
+     * rather than throwing - "not supported" is an expected, normal
+     * result for most providers today, not an error condition).
+     *
+     * @return array{supported: bool, likes: ?int, comments: ?int, shares: ?int}
+     *
+     * @throws \App\Domain\Integrations\Support\RefreshTokenException when the access token was rejected
+     * @throws \App\Domain\Integrations\Support\BadBodyException on any other platform-side failure
+     */
+    public function fetchEngagement(Integration $integration, Post $post): array;
 }

@@ -39,6 +39,32 @@ class PublishPostJobTest extends TestCase
         $this->assertSame(0, $post->errors()->count());
     }
 
+    /**
+     * Needed for FetchPostEngagementJob to later look up a specific post's
+     * stats - previously discarded entirely (see the LinkedIn "URN is never
+     * captured" gotcha this fixed as a side effect).
+     */
+    public function test_it_captures_the_providers_own_post_id(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $this->actingAs($user);
+
+        $integration = Integration::factory()->create();
+
+        $post = Post::factory()->create([
+            'integration_id' => $integration->id,
+            'content' => 'A perfectly normal post.',
+            'state' => PostState::Queue,
+            'scheduled_at' => now()->subMinute(),
+        ]);
+
+        (new PublishPostJob($post->id))->handle(app(SocialProviderManager::class));
+
+        $post->refresh();
+
+        $this->assertSame("fake-post-{$post->id}", $post->provider_post_id);
+    }
+
     public function test_a_publishing_failure_records_an_error_and_rethrows(): void
     {
         $user = User::factory()->withPersonalTeam()->create();

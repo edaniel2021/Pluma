@@ -48,12 +48,14 @@ class FakeProvider extends AbstractSocialProvider
         ])->save();
     }
 
-    public function post(Integration $integration, Post $post): void
+    public function post(Integration $integration, Post $post): ?string
     {
         if (str_contains($post->content, '[FAIL]')) {
             throw new BadBodyException("Simulated failure publishing post #{$post->id}.");
         }
 
         Log::info("Fake-published post #{$post->id} to integration #{$integration->id}: \"{$post->content}\"");
+
+        return "fake-post-{$post->id}";
     }
 }

@@ -11,3 +11,7 @@ Artisan::command('inspire', function () {
 // Replaces Temporal's autopost + missing-post-recovery workflows - see
 // App\Console\Commands\DispatchDuePosts for why one poller covers both.
 Schedule::command('posts:dispatch-due')->everyMinute();
+
+// Engagement doesn't need real-time freshness - every 30 minutes keeps API
+// call volume modest. See App\Console\Commands\RefreshPostEngagement.
+Schedule::command('posts:refresh-engagement')->everyThirtyMinutes();

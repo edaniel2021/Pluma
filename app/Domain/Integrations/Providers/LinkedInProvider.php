@@ -50,7 +50,7 @@ class LinkedInProvider extends AbstractSocialProvider
         $integration->forceFill(['disabled_at' => now()])->save();
     }
 
-    public function post(Integration $integration, Post $post): void
+    public function post(Integration $integration, Post $post): ?string
     {
         $media = $post->getFirstMedia('default');
 
@@ -82,9 +82,13 @@ class LinkedInProvider extends AbstractSocialProvider
 
         $this->assertSuccessful($response, $integration);
 
-        if (! $response->header('x-restli-id')) {
+        $postId = $response->header('x-restli-id');
+
+        if (! $postId) {
             throw new BadBodyException("LinkedIn accepted the request but returned no post ID for post #{$post->id}.");
         }
+
+        return $postId;
     }
 
     /**
