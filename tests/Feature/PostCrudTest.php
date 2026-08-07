@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Domain\Integrations\Models\Integration;
 use App\Domain\Posts\Enums\PostState;
 use App\Domain\Posts\Models\Post;
 use App\Livewire\Posts\Form;
@@ -111,5 +112,27 @@ class PostCrudTest extends TestCase
         $this->actingAs($userB);
         $this->assertSame(1, Post::count());
         $this->assertSame('Post for org B', Post::first()->content);
+    }
+
+    public function test_index_shows_the_platform_icon_for_a_post_tied_to_an_integration(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $this->actingAs($user);
+        $integration = Integration::factory()->create(['provider' => 'linkedin']);
+        Post::factory()->create(['integration_id' => $integration->id]);
+
+        Livewire::actingAs($user)->test(Index::class)
+            ->assertSeeHtml('<title>LinkedIn</title>');
+    }
+
+    public function test_index_does_not_error_for_a_plain_draft_with_no_integration(): void
+    {
+        $user = User::factory()->withPersonalTeam()->create();
+        $this->actingAs($user);
+        Post::factory()->create(['integration_id' => null]);
+
+        Livewire::actingAs($user)->test(Index::class)
+            ->assertDontSeeHtml('<svg')
+            ->assertOk();
     }
 }

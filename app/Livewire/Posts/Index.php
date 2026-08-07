@@ -20,8 +20,9 @@ class Index extends Component
     {
         return view('livewire.posts.index', [
             // The BelongsToOrganization global scope already restricts this
-            // to the active organization's posts.
-            'posts' => Post::latest()->paginate(10),
+            // to the active organization's posts. Eager-loads integration
+            // so the platform icon per post doesn't N+1.
+            'posts' => Post::with('integration')->latest()->paginate(10),
         ]);
     }
 }

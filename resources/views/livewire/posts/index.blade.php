@@ -10,6 +10,10 @@
             <div class="p-4 flex items-center justify-between">
                 <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2">
+                        @if ($post->integration)
+                            <x-social-icon :provider="$post->integration->provider" />
+                        @endif
+
                         <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
                             @class([
                                 'bg-gray-100 text-gray-800' => $post->state === \App\Domain\Posts\Enums\PostState::Draft,
